@@ -1,0 +1,15 @@
+{
+  "current_strategy": "double_ma_cross",
+  "params": {
+    "ma_short": 5,
+    "ma_long": 20,
+    "ma_filter": 60,
+    "volume_filter": true,
+    "volume_ratio": 1.5,
+    "use_stop_loss": true,
+    "stop_loss": 0.08,
+    "use_take_profit": true,
+    "take_profit": 0.15,
+    "trailing_stop": 0.05
+  }
+}

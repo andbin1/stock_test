@@ -1,0 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 数据缓存
+data_cache/
+*.db
+*.sqlite
+*.sqlite3
+
+# 回测结果
+backtest_results/
+*.xlsx
+*.xls
+
+# 日志
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.bak
+*.backup
+temp/
+tmp/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 测试覆盖率
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.tox/
+
+# 发布包
+stock_test_v*_release/
+stock_test_v*_release.zip
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# 个人配置
+config_local.py

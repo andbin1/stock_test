@@ -1,0 +1,28 @@
+# 量化回测系统 - 生产环境依赖
+# Python 3.8+ 需要
+
+# Web 框架
+Flask==2.3.2
+flask-cors==4.0.0
+
+# 数据处理
+pandas==2.0.2
+numpy==1.24.3
+
+# 股票数据源
+efinance==0.2.10
+akshare==1.11.73
+
+# Excel 导出
+openpyxl==3.10.1
+
+# 进度显示
+tqdm==4.65.0
+
+# 可视化（可选）
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Web 服务器（生产环境）
+# gunicorn==21.2.0  # Linux/Mac 使用
+# waitress==2.1.2   # Windows 使用

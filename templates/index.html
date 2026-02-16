@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股交易策略回测系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 10px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        input:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .results {
+            background: #f9f9f9;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            display: none;
+        }
+
+        .results.active {
+            display: block;
+        }
+
+        .result-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .result-label {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .result-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .result-value.positive {
+            color: #00a854;
+        }
+
+        .result-value.negative {
+            color: #f5222d;
+        }
+
+        .trades-list {
+            margin-top: 15px;
+        }
+
+        .trade-item {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .trade-date {
+            color: #666;
+        }
+
+        .trade-return {
+            font-weight: bold;
+        }
+
+        .trade-return.positive {
+            color: #00a854;
+        }
+
+        .trade-return.negative {
+            color: #f5222d;
+        }
+
+        .trade-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid #f0f0f0;
+        }
+
+        .trade-detail {
+            font-size: 11px;
+            color: #999;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+
+        .loading.active {
+            display: block;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+            font-size: 12px;
+        }
+
+        .error.active {
+            display: block;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .stat-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .parameters-section {
+            background: #f0f7ff;
+            border-left: 3px solid #667eea;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .param-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-size: 12px;
+        }
+
+        .param-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .param-label {
+            color: #666;
+        }
+
+        .param-value {
+            color: #333;
+            font-weight: bold;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+
+            .header {
+                padding: 15px;
+            }
+
+            .header h1 {
+                font-size: 20px;
+            }
+
+            .content {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 A股交易策略回测</h1>
+            <p>量能放大 + 5日线回踩 + 3日持有</p>
+        </div>
+
+        <div class="content">
+            <!-- 策略参数 -->
+            <div class="section">
+                <div class="section-title">策略参数</div>
+                <div class="parameters-section" id="params"></div>
+            </div>
+
+            <!-- 输入部分 -->
+            <div class="section">
+                <div class="section-title">回测设置</div>
+
+                <div class="input-group">
+                    <label>股票代码</label>
+                    <input type="text" id="stockCode" value="000001" placeholder="输入股票代码">
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-primary" onclick="runBacktest()">运行回测</button>
+                    <button class="btn-secondary" onclick="exportExcel()">导出Excel</button>
+                </div>
+            </div>
+
+            <!-- 加载提示 -->
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 10px; font-size: 12px; color: #999;">处理中...</p>
+            </div>
+
+            <!-- 错误提示 -->
+            <div class="error" id="error"></div>
+
+            <!-- 结果显示 -->
+            <div class="results" id="results">
+                <div class="section-title">回测结果</div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">交易笔数</div>
+                        <div class="stat-value" id="resultTrades">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">总收益率</div>
+                        <div class="stat-value" id="resultReturn">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">平均收益</div>
+                        <div class="stat-value" id="resultAvg">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">胜率</div>
+                        <div class="stat-value" id="resultWinRate">0%</div>
+                    </div>
+                </div>
+
+                <div class="result-item">
+                    <div><div class="result-label">买入信号</div><div class="result-value" id="resultBuySignals">0</div></div>
+                    <div><div class="result-label">卖出信号</div><div class="result-value" id="resultSellSignals">0</div></div>
+                </div>
+
+                <!-- 交易明细 -->
+                <div class="trades-list">
+                    <div style="font-size: 12px; color: #999; margin-bottom: 10px; font-weight: bold;">交易明细</div>
+                    <div id="tradesList"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 加载策略参数
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const config = await response.json();
+
+                const paramsHtml = Object.entries(config.strategy_params).map(([key, value]) => `
+                    <div class="param-item">
+                        <div class="param-label">${key}</div>
+                        <div class="param-value">${value}</div>
+                    </div>
+                `).join('');
+
+                document.getElementById('params').innerHTML = paramsHtml;
+            } catch (error) {
+                console.error('加载配置失败:', error);
+            }
+        }
+
+        // 运行回测
+        async function runBacktest() {
+            const stockCode = document.getElementById('stockCode').value;
+
+            if (!stockCode) {
+                showError('请输入股票代码');
+                return;
+            }
+
+            showLoading(true);
+            hideError();
+
+            try {
+                const response = await fetch('/api/backtest/demo', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ stock_code: stockCode })
+                });
+
+                if (!response.ok) {
+                    throw new Error('回测失败');
+                }
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    showError(result.error || '回测出错');
+                    showLoading(false);
+                    return;
+                }
+
+                displayResults(result);
+                showLoading(false);
+
+            } catch (error) {
+                showError('网络错误: ' + error.message);
+                showLoading(false);
+            }
+        }
+
+        // 显示结果
+        function displayResults(result) {
+            document.getElementById('resultTrades').textContent = result.trades;
+            document.getElementById('resultReturn').textContent = result.total_return.toFixed(2) + '%';
+            document.getElementById('resultAvg').textContent = result.avg_return.toFixed(2) + '%';
+            document.getElementById('resultWinRate').textContent = result.win_rate.toFixed(1) + '%';
+            document.getElementById('resultBuySignals').textContent = result.buy_signals;
+            document.getElementById('resultSellSignals').textContent = result.sell_signals;
+
+            // 显示交易明细
+            const tradesList = document.getElementById('tradesList');
+            if (result.trades_list && result.trades_list.length > 0) {
+                tradesList.innerHTML = result.trades_list.map((trade, index) => {
+                    const returnClass = trade.return > 0 ? 'positive' : 'negative';
+                    return `
+                        <div class="trade-item">
+                            <div class="trade-header">
+                                <span class="trade-date">交易 #${index + 1}</span>
+                                <span class="trade-return ${returnClass}">${trade.return > 0 ? '+' : ''}${trade.return.toFixed(2)}%</span>
+                            </div>
+                            <div class="trade-details">
+                                <div class="trade-detail">
+                                    <strong>买入:</strong><br/>
+                                    ${trade.buy_date} @ ${trade.buy_price.toFixed(2)}
+                                </div>
+                                <div class="trade-detail">
+                                    <strong>卖出:</strong><br/>
+                                    ${trade.sell_date} @ ${trade.sell_price.toFixed(2)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                tradesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">未产生交易信号</div>';
+            }
+
+            document.getElementById('results').classList.add('active');
+        }
+
+        // 导出Excel
+        async function exportExcel() {
+            const stockCode = document.getElementById('stockCode').value;
+
+            if (!stockCode) {
+                showError('请输入股票代码');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/backtest/export', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ stock_code: stockCode })
+                });
+
+                if (!response.ok) {
+                    throw new Error('导出失败');
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `回测_${stockCode}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+            } catch (error) {
+                showError('导出失败: ' + error.message);
+            }
+        }
+
+        // UI 辅助函数
+        function showLoading(show) {
+            document.getElementById('loading').classList.toggle('active', show);
+        }
+
+        function showError(message) {
+            const error = document.getElementById('error');
+            error.textContent = message;
+            error.classList.add('active');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('active');
+        }
+
+        // 页面加载完成后初始化
+        window.addEventListener('load', loadConfig);
+    </script>
+</body>
+</html>
