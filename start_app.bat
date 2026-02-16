@@ -20,7 +20,25 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [OK] Python environment detected
+echo [OK] Python environment detected:
+python --version
+echo.
+
+REM Check Python version (lenient check for beta/dev versions)
+python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] Python version might be too old
+    echo This system requires Python 3.8 or higher
+    echo.
+    set /p continue="Continue anyway? (Y/N): "
+    if /i not "!continue!"=="Y" (
+        echo Startup cancelled.
+        pause
+        exit /b 1
+    )
+) else (
+    echo [OK] Python version check passed
+)
 echo.
 
 REM Check dependencies
@@ -33,13 +51,18 @@ if errorlevel 1 (
     set /p install="Install dependencies now? (Y/N): "
     if /i "!install!"=="Y" (
         echo.
-        echo [INFO] Installing dependencies...
+        echo [INFO] Installing dependencies (using Tsinghua mirror)...
         pip install -r requirements_release.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
         if errorlevel 1 (
-            echo.
-            echo [ERROR] Failed to install dependencies
-            pause
-            exit /b 1
+            echo [RETRY] Trying Aliyun mirror...
+            pip install -r requirements_release.txt -i https://mirrors.aliyun.com/pypi/simple
+            if errorlevel 1 (
+                echo.
+                echo [ERROR] Failed to install dependencies
+                echo Please run install_dependencies.bat manually
+                pause
+                exit /b 1
+            )
         )
         echo [OK] Dependencies installed
     ) else (
@@ -49,9 +72,9 @@ if errorlevel 1 (
         pause
         exit /b 1
     )
+) else (
+    echo [OK] Dependencies check passed
 )
-
-echo [OK] Dependencies check passed
 echo.
 
 REM Create necessary directories
@@ -65,6 +88,7 @@ echo.
 echo --------------------------------------------------------
 echo.
 echo   Access URL: http://localhost:5000
+echo   
 echo   Press Ctrl+C to stop the server
 echo.
 echo --------------------------------------------------------
@@ -76,5 +100,11 @@ python app_with_cache.py
 if errorlevel 1 (
     echo.
     echo [ERROR] Application failed to start
+    echo.
+    echo Common issues:
+    echo   - Port 5000 already in use
+    echo   - Missing dependencies
+    echo   - Python version incompatible
+    echo.
     pause
 )
