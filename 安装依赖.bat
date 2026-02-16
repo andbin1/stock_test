@@ -1,63 +1,142 @@
 @echo off
-chcp 65001 > nul
-title 量化回测系统 - 依赖安装
+setlocal enabledelayedexpansion
 
-echo ╔═══════════════════════════════════════════════════════╗
-echo ║         量化回测系统 - 依赖包安装工具               ║
-echo ╚═══════════════════════════════════════════════════════╝
+title Stock Backtest System - Installing Dependencies
+
+echo ========================================================
+echo    Stock Backtest System - Dependency Installer
+echo ========================================================
 echo.
 
-:: 检查 Python
-python --version > nul 2>&1
+REM Check Python installation
+python --version >nul 2>&1
 if errorlevel 1 (
-    echo ❌ 错误：未检测到 Python 环境
+    echo [ERROR] Python not found!
     echo.
-    echo 请先安装 Python 3.8 或更高版本
-    echo 下载地址：https://www.python.org/downloads/
+    echo Please install Python 3.8 or higher first.
+    echo Download: https://www.python.org/downloads/
     echo.
     pause
     exit /b 1
 )
 
-echo ✓ 检测到 Python 环境：
+echo [OK] Python detected:
 python --version
 echo.
 
-:: 升级 pip
-echo 📦 升级 pip...
-python -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple
-echo.
-
-:: 安装依赖
-echo 📥 开始安装依赖包...
-echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-echo.
-
-pip install -r requirements_release.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
-
+REM Check Python version (more lenient check)
+python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>&1
 if errorlevel 1 (
+    echo [WARNING] Python version might be too old
+    echo This system requires Python 3.8 or higher
+    echo Your version:
+    python --version
     echo.
-    echo ❌ 安装失败！
-    echo.
-    echo 可能的原因：
-    echo   1. 网络连接问题
-    echo   2. Python 版本过低（需要 3.8+）
-    echo   3. 权限不足
-    echo.
-    echo 解决方案：
-    echo   - 检查网络连接
-    echo   - 尝试使用管理员权限运行
-    echo   - 更换镜像源
-    echo.
-    pause
-    exit /b 1
+    set /p continue="Continue anyway? (Y/N): "
+    if /i not "!continue!"=="Y" (
+        echo Installation cancelled.
+        pause
+        exit /b 1
+    )
+)
+
+REM Select pip mirror
+echo [STEP 1] Select pip mirror source:
+echo.
+echo   1. Tsinghua University (recommended)
+echo   2. Aliyun
+echo   3. Tencent Cloud
+echo   4. Douban
+echo   5. Official PyPI (slow in China)
+echo.
+set /p mirror="Enter your choice (1-5, default=1): "
+
+if "!mirror!"=="" set mirror=1
+
+if "!mirror!"=="1" (
+    set MIRROR_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+    set MIRROR_NAME=Tsinghua University
+)
+if "!mirror!"=="2" (
+    set MIRROR_URL=https://mirrors.aliyun.com/pypi/simple
+    set MIRROR_NAME=Aliyun
+)
+if "!mirror!"=="3" (
+    set MIRROR_URL=https://mirrors.cloud.tencent.com/pypi/simple
+    set MIRROR_NAME=Tencent Cloud
+)
+if "!mirror!"=="4" (
+    set MIRROR_URL=https://pypi.doubanio.com/simple
+    set MIRROR_NAME=Douban
+)
+if "!mirror!"=="5" (
+    set MIRROR_URL=https://pypi.org/simple
+    set MIRROR_NAME=Official PyPI
 )
 
 echo.
-echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+echo [INFO] Using mirror: !MIRROR_NAME!
+echo [INFO] Mirror URL: !MIRROR_URL!
 echo.
-echo ✅ 依赖安装完成！
+
+REM Upgrade pip
+echo [STEP 2] Upgrading pip...
+python -m pip install --upgrade pip -i !MIRROR_URL!
+if errorlevel 1 (
+    echo [WARNING] Failed to upgrade pip, continuing anyway...
+)
 echo.
-echo 下一步：运行 "启动应用.bat" 启动系统
+
+REM Install dependencies
+echo [STEP 3] Installing dependencies...
+echo --------------------------------------------------------
+echo.
+echo This may take a few minutes, please wait...
+echo.
+
+pip install -r requirements_release.txt -i !MIRROR_URL!
+
+if errorlevel 1 (
+    echo.
+    echo [ERROR] Installation failed!
+    echo.
+    echo Trying alternative mirror sources...
+    echo.
+    
+    REM Try alternative mirrors
+    echo [RETRY 1] Trying Aliyun mirror...
+    pip install -r requirements_release.txt -i https://mirrors.aliyun.com/pypi/simple
+    
+    if errorlevel 1 (
+        echo [RETRY 2] Trying Tencent mirror...
+        pip install -r requirements_release.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+        
+        if errorlevel 1 (
+            echo.
+            echo [ERROR] All mirrors failed!
+            echo.
+            echo Possible reasons:
+            echo   1. Network connection issues
+            echo   2. Firewall blocking
+            echo   3. Proxy settings needed
+            echo.
+            echo Solutions:
+            echo   - Check network connection
+            echo   - Try running as Administrator
+            echo   - Disable VPN/Proxy temporarily
+            echo   - Contact your network administrator
+            echo.
+            pause
+            exit /b 1
+        )
+    )
+)
+
+echo.
+echo --------------------------------------------------------
+echo.
+echo [SUCCESS] Dependencies installed successfully!
+echo.
+echo Next step: Run "start_app.bat" to start the system
 echo.
 pause
