@@ -1,20 +1,16 @@
-"""数据获取模块 - 从efinance/akshare获取A股数据"""
+"""数据获取模块 - 从efinance获取A股数据"""
 import pandas as pd
 from tqdm import tqdm
 import time
 
-# 优先使用 efinance，失败则使用 akshare
+# 使用 efinance 作为数据源
 try:
     import efinance as ef
     HAS_EFINANCE = True
 except ImportError:
     HAS_EFINANCE = False
-
-try:
-    import akshare as ak
-    HAS_AKSHARE = True
-except ImportError:
-    HAS_AKSHARE = False
+    print("错误: 未安装 efinance 库")
+    print("请运行: pip install efinance")
 
 def generate_stock_codes(prefix: str, start: int, end: int) -> list:
     """根据代码规律生成股票代码列表
@@ -95,13 +91,17 @@ def get_index_constituents(index_code: str, limit: int = None) -> list:
 
 def get_stock_data(symbol: str, start_date: str, end_date: str, max_retries: int = 3) -> pd.DataFrame:
     """
-    获取单只股票历史数据（优先使用efinance，失败则使用akshare）
+    获取单只股票历史数据（使用efinance）
     symbol: 股票代码（如 "000001" 或 "600000"）
     start_date: 开始日期（如 "20200101"）
     end_date: 结束日期（如 "20250213"）
     """
-    # 尝试方法1: efinance
-    if HAS_EFINANCE:
+    if not HAS_EFINANCE:
+        print(f"错误: efinance 库未安装，无法获取数据")
+        return None
+
+    # 使用 efinance 获取数据，支持重试
+    for attempt in range(max_retries):
         try:
             df = ef.stock.get_quote_history(symbol, beg=start_date, end=end_date)
 
@@ -133,57 +133,13 @@ def get_stock_data(symbol: str, start_date: str, end_date: str, max_retries: int
             return df
 
         except Exception as e:
-            pass  # 尝试下一个方法
+            if attempt < max_retries - 1:
+                time.sleep(2)  # 等待2秒后重试
+                continue
+            else:
+                print(f"获取 {symbol} 数据失败: {str(e)}")
+                return None
 
-    # 尝试方法2: akshare
-    if HAS_AKSHARE:
-        for attempt in range(max_retries):
-            try:
-                df = ak.stock_zh_a_hist(
-                    symbol=symbol,
-                    start_date=start_date,
-                    end_date=end_date,
-                    adjust="qfq"  # 前复权
-                )
-
-                if df.empty:
-                    return None
-
-                df = df.reset_index(drop=True)
-
-                # 标准化列名
-                df = df.rename(columns={
-                    '日期': '日期',
-                    '开盘': '开盘',
-                    '收盘': '收盘',
-                    '最高': '高',
-                    '最低': '低',
-                    '成交量': '成交量',
-                    '成交额': '成交额',
-                    '振幅': '振幅',
-                    '涨跌幅': '涨跌幅',
-                    '涨跌额': '涨跌',
-                    '换手率': '换手率'
-                })
-
-                df = df[['日期', '开盘', '收盘', '高', '低', '成交量', '成交额', '振幅', '涨跌幅', '涨跌', '换手率']]
-
-                df['日期'] = pd.to_datetime(df['日期'])
-                df = df.sort_values('日期').reset_index(drop=True)
-
-                # 将成交量转换为手（100股为1手）
-                df['成交量'] = df['成交量'] / 100
-
-                return df
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    time.sleep(2)  # 等待2秒后重试
-                    continue
-                else:
-                    pass  # 继续尝试其他方法
-
-    # 如果两个都失败
-    print(f"获取 {symbol} 数据失败: 无可用数据源")
     return None
 
 

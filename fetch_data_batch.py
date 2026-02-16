@@ -12,7 +12,7 @@ def main():
     print("  批量数据获取工具")
     print("="*70)
     print(f"数据范围: {START_DATE} ~ {END_DATE}")
-    print(f"数据来源: efinance / akshare")
+    print(f"数据来源: efinance")
     print()
 
     # 获取指数成分股

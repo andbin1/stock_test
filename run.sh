@@ -14,7 +14,7 @@ if ! command -v python &> /dev/null; then
 fi
 
 echo "正在检查依赖..."
-if ! python -c "import akshare" 2>/dev/null; then
+if ! python -c "import efinance" 2>/dev/null; then
     echo ""
     echo "首次运行，正在安装依赖..."
     echo ""

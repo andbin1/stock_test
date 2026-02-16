@@ -120,31 +120,12 @@ class TestGetStockData:
         assert '收盘' in result.columns
 
     @patch('data_fetcher.HAS_EFINANCE', False)
-    @patch('data_fetcher.ak.stock_zh_a_hist')
-    def test_get_stock_data_with_akshare(self, mock_ak_get):
-        """测试使用akshare获取数据"""
-        mock_df = pd.DataFrame({
-            '日期': pd.date_range('2024-01-01', periods=10),
-            '开盘': [10.0] * 10,
-            '收盘': [10.5] * 10,
-            '最高': [11.0] * 10,
-            '最低': [9.5] * 10,
-            '成交量': [100000000] * 10,  # 股
-            '成交额': [10000000] * 10,
-            '振幅': [2.0] * 10,
-            '涨跌幅': [1.0] * 10,
-            '涨跌额': [0.1] * 10,
-            '换手率': [2.0] * 10,
-        })
-        mock_ak_get.return_value = mock_df
-
+    def test_get_stock_data_no_efinance(self):
+        """测试没有efinance时的处理"""
         result = get_stock_data("000001", "20240101", "20240110")
 
-        assert result is not None
-        assert '日期' in result.columns
-        assert '收盘' in result.columns
-        # 验证成交量转换（应该除以100转换为手）
-        assert result['成交量'].iloc[0] == 1000000
+        # 没有efinance应该返回None
+        assert result is None
 
     @patch('data_fetcher.ef.stock.get_quote_history')
     def test_get_stock_data_empty_result(self, mock_ef_get):
@@ -169,24 +150,19 @@ class TestGetStockData:
         """测试异常处理"""
         mock_ef_get.side_effect = Exception("Network error")
 
-        # 应该不抛出异常，而是返回None或尝试其他方法
+        # 应该不抛出异常，而是返回None
         result = get_stock_data("000001", "20240101", "20240110")
 
-        # 可能返回None或者尝试akshare
-        # 不应该抛出异常
-        assert True  # 如果没抛异常就通过
+        # 异常时应该返回None
+        assert result is None
 
-    @patch('data_fetcher.HAS_EFINANCE', False)
-    @patch('data_fetcher.ak.stock_zh_a_hist')
-    def test_get_stock_data_retry_mechanism(self, mock_ak_get):
+    @patch('data_fetcher.ef.stock.get_quote_history')
+    def test_get_stock_data_retry_mechanism(self, mock_ef_get):
         """测试重试机制"""
         # 前两次失败，第三次成功
         mock_df = pd.DataFrame({
-            '日期': pd.date_range('2024-01-01', periods=10),
-            '开盘': [10.0] * 10,
-            '收盘': [10.5] * 10,
-            '最高': [11.0] * 10,
-            '最低': [9.5] * 10,
+            '股票名称': ['测试股票'] * 10,
+            '股票代码': ['000001'] * 10,
             '成交量': [100000000] * 10,
             '成交额': [10000000] * 10,
             '振幅': [2.0] * 10,
@@ -326,7 +302,6 @@ class TestEdgeCases:
         assert len(codes) == 0
 
     @patch('data_fetcher.HAS_EFINANCE', False)
-    @patch('data_fetcher.HAS_AKSHARE', False)
     def test_get_stock_data_no_data_source(self):
         """测试无可用数据源"""
         result = get_stock_data("000001", "20240101", "20240110")
