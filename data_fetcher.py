@@ -110,26 +110,28 @@ def get_stock_data(symbol: str, start_date: str, end_date: str, max_retries: int
 
             df = df.reset_index(drop=True)
 
-            # 标准化列名
+            # 标准化列名（使用列名而非索引，更稳定）
+            # efinance 返回的列：['股票名称', '股票代码', '日期', '开盘', '收盘', '最高', '最低', '成交量', '成交额', '振幅', '涨跌幅', '涨跌额', '换手率']
             df = pd.DataFrame({
-                '日期': pd.to_datetime(df.iloc[:, 0]) if len(df.columns) > 0 else None,
-                '开盘': df.iloc[:, 1] if len(df.columns) > 1 else None,
-                '收盘': df.iloc[:, 2] if len(df.columns) > 2 else None,
-                '高': df.iloc[:, 3] if len(df.columns) > 3 else None,
-                '低': df.iloc[:, 4] if len(df.columns) > 4 else None,
-                '成交量': df.iloc[:, 5] if len(df.columns) > 5 else None,
-                '成交额': df.iloc[:, 6] if len(df.columns) > 6 else None,
+                '日期': pd.to_datetime(df['日期'], errors='coerce') if '日期' in df.columns else None,
+                '开盘': df['开盘'] if '开盘' in df.columns else None,
+                '收盘': df['收盘'] if '收盘' in df.columns else None,
+                '高': df['最高'] if '最高' in df.columns else None,
+                '低': df['最低'] if '最低' in df.columns else None,
+                '成交量': df['成交量'] if '成交量' in df.columns else None,
+                '成交额': df['成交额'] if '成交额' in df.columns else None,
+                '振幅': df['振幅'] if '振幅' in df.columns else None,
+                '涨跌幅': df['涨跌幅'] if '涨跌幅' in df.columns else None,
+                '涨跌': df['涨跌额'] if '涨跌额' in df.columns else None,
+                '换手率': df['换手率'] if '换手率' in df.columns else None,
             })
 
-            df = df.dropna(subset=['收盘'])
+            # 删除日期无效的行
+            df = df.dropna(subset=['日期', '收盘'])
             df = df.sort_values('日期').reset_index(drop=True)
 
-            # 添加标准化列
-            df['振幅'] = ((df['高'] - df['低']) / df['低'] * 100).round(2)
-            df['涨跌幅'] = ((df['收盘'] - df['开盘']) / df['开盘'] * 100).round(2)
-            df['涨跌'] = (df['收盘'] - df['开盘']).round(2)
-            df['换手率'] = 0.0
-
+            # efinance 已提供所有指标，无需重复计算
+            # 只需确保数据类型正确
             return df
 
         except Exception as e:
