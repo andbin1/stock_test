@@ -24,8 +24,8 @@ echo [OK] Python detected:
 python --version
 echo.
 
-REM Check Python version (more lenient check)
-python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>&1
+REM Check Python version
+python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 8 else 1)" >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] Python version might be too old
     echo This system requires Python 3.8 or higher
@@ -33,12 +33,25 @@ if errorlevel 1 (
     python --version
     echo.
     set /p continue="Continue anyway? (Y/N): "
-    if /i not "!continue!"=="Y" (
+    if /i "!continue!" == "Y" (
+        echo Continuing...
+    ) else (
         echo Installation cancelled.
         pause
         exit /b 1
     )
 )
+
+REM Detect Python version and select requirements file
+python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 12 else 1)" >nul 2>&1
+if errorlevel 1 (
+    set REQ_FILE=requirements_release.txt
+    echo [INFO] Python version ^< 3.12, using requirements_release.txt
+) else (
+    set REQ_FILE=requirements_py312.txt
+    echo [INFO] Python 3.12+ detected, using requirements_py312.txt
+)
+echo.
 
 REM Select pip mirror
 echo [STEP 1] Select pip mirror source:
@@ -51,25 +64,25 @@ echo   5. Official PyPI (slow in China)
 echo.
 set /p mirror="Enter your choice (1-5, default=1): "
 
-if "!mirror!"=="" set mirror=1
+if "!mirror!" == "" set mirror=1
 
-if "!mirror!"=="1" (
+if "!mirror!" == "1" (
     set MIRROR_URL=https://pypi.tuna.tsinghua.edu.cn/simple
     set MIRROR_NAME=Tsinghua University
 )
-if "!mirror!"=="2" (
+if "!mirror!" == "2" (
     set MIRROR_URL=https://mirrors.aliyun.com/pypi/simple
     set MIRROR_NAME=Aliyun
 )
-if "!mirror!"=="3" (
+if "!mirror!" == "3" (
     set MIRROR_URL=https://mirrors.cloud.tencent.com/pypi/simple
     set MIRROR_NAME=Tencent Cloud
 )
-if "!mirror!"=="4" (
+if "!mirror!" == "4" (
     set MIRROR_URL=https://pypi.doubanio.com/simple
     set MIRROR_NAME=Douban
 )
-if "!mirror!"=="5" (
+if "!mirror!" == "5" (
     set MIRROR_URL=https://pypi.org/simple
     set MIRROR_NAME=Official PyPI
 )
@@ -77,17 +90,6 @@ if "!mirror!"=="5" (
 echo.
 echo [INFO] Using mirror: !MIRROR_NAME!
 echo [INFO] Mirror URL: !MIRROR_URL!
-echo.
-
-REM Detect Python version and select requirements file
-python -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>&1
-if errorlevel 1 (
-    set REQ_FILE=requirements_release.txt
-    echo [INFO] Python version ^< 3.12, using requirements_release.txt
-) else (
-    set REQ_FILE=requirements_py312.txt
-    echo [INFO] Python 3.12+ detected, using requirements_py312.txt
-)
 echo.
 
 REM Upgrade pip
@@ -117,11 +119,11 @@ if errorlevel 1 (
     
     REM Try alternative mirrors
     echo [RETRY 1] Trying Aliyun mirror...
-    pip install -r requirements_release.txt -i https://mirrors.aliyun.com/pypi/simple
+    pip install -r !REQ_FILE! -i https://mirrors.aliyun.com/pypi/simple
     
     if errorlevel 1 (
         echo [RETRY 2] Trying Tencent mirror...
-        pip install -r requirements_release.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+        pip install -r !REQ_FILE! -i https://mirrors.cloud.tencent.com/pypi/simple
         
         if errorlevel 1 (
             echo.
@@ -149,6 +151,6 @@ echo --------------------------------------------------------
 echo.
 echo [SUCCESS] Dependencies installed successfully!
 echo.
-echo Next step: Run "start_app.bat" to start the system
+echo Next step: Run "启动应用.bat" to start the system
 echo.
 pause

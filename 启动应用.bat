@@ -24,14 +24,16 @@ echo [OK] Python environment detected:
 python --version
 echo.
 
-REM Check Python version (lenient check for beta/dev versions)
-python -c "import sys; exit(0 if sys.version_info >= (3, 8) else 1)" >nul 2>&1
+REM Check Python version
+python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 8 else 1)" >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] Python version might be too old
     echo This system requires Python 3.8 or higher
     echo.
     set /p continue="Continue anyway? (Y/N): "
-    if /i not "!continue!"=="Y" (
+    if /i "!continue!" == "Y" (
+        echo Continuing...
+    ) else (
         echo Startup cancelled.
         pause
         exit /b 1
@@ -49,17 +51,25 @@ if errorlevel 1 (
     echo [WARNING] Required dependencies not found!
     echo.
     set /p install="Install dependencies now? (Y/N): "
-    if /i "!install!"=="Y" (
+    if /i "!install!" == "Y" (
         echo.
+        echo [INFO] Detecting Python version...
+        python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 12 else 1)" >nul 2>&1
+        if errorlevel 1 (
+            set REQ_FILE=requirements_release.txt
+        ) else (
+            set REQ_FILE=requirements_py312.txt
+        )
+        echo [INFO] Using: !REQ_FILE!
         echo [INFO] Installing dependencies (using Tsinghua mirror)...
-        pip install -r requirements_release.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+        pip install -r !REQ_FILE! -i https://pypi.tuna.tsinghua.edu.cn/simple
         if errorlevel 1 (
             echo [RETRY] Trying Aliyun mirror...
-            pip install -r requirements_release.txt -i https://mirrors.aliyun.com/pypi/simple
+            pip install -r !REQ_FILE! -i https://mirrors.aliyun.com/pypi/simple
             if errorlevel 1 (
                 echo.
                 echo [ERROR] Failed to install dependencies
-                echo Please run install_dependencies.bat manually
+                echo Please run: 安装依赖.bat
                 pause
                 exit /b 1
             )
@@ -68,7 +78,7 @@ if errorlevel 1 (
     ) else (
         echo.
         echo [ERROR] Cannot start without dependencies
-        echo Please run: install_dependencies.bat
+        echo Please run: 安装依赖.bat
         pause
         exit /b 1
     )
@@ -88,7 +98,7 @@ echo.
 echo --------------------------------------------------------
 echo.
 echo   Access URL: http://localhost:5000
-echo   
+echo.
 echo   Press Ctrl+C to stop the server
 echo.
 echo --------------------------------------------------------
