@@ -3,6 +3,6 @@ flask-cors==4.0.0
 pandas==2.0.2
 numpy==1.24.3
 openpyxl==3.10.1
-efinance==0.2.10
+efinance==0.2.9
 tqdm==4.65.0
 gunicorn==21.2.0
