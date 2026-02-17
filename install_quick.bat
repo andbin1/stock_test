@@ -1,11 +1,10 @@
 @echo off
-REM Quick installation script without user interaction
-REM Uses Tsinghua mirror by default
+REM Quick installation without user interaction
 
-title Quick Install - Stock Backtest System
+title Quick Install
 
 echo ========================================================
-echo    Quick Installation (No interaction required)
+echo    Quick Installation
 echo ========================================================
 echo.
 
@@ -20,18 +19,18 @@ echo [OK] Python detected
 python --version
 echo.
 
-REM Detect Python version and select requirements file
-python -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>&1
+REM Detect Python version
+python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 12 else 1)" >nul 2>&1
 if errorlevel 1 (
     set REQ_FILE=requirements_release.txt
     echo [INFO] Using requirements_release.txt
 ) else (
     set REQ_FILE=requirements_py312.txt
-    echo [INFO] Python 3.12+ detected, using requirements_py312.txt
+    echo [INFO] Using requirements_py312.txt
 )
 echo.
 
-echo [INFO] Installing dependencies using Tsinghua mirror...
+echo [INFO] Installing via Tsinghua mirror...
 echo.
 
 REM Try Tsinghua mirror
@@ -39,17 +38,17 @@ pip install -r %REQ_FILE% -i https://pypi.tuna.tsinghua.edu.cn/simple
 
 if errorlevel 1 (
     echo.
-    echo [RETRY] Trying Aliyun mirror...
+    echo [RETRY] Trying Aliyun...
     pip install -r %REQ_FILE% -i https://mirrors.aliyun.com/pypi/simple
 
     if errorlevel 1 (
         echo.
-        echo [RETRY] Trying Tencent mirror...
+        echo [RETRY] Trying Tencent...
         pip install -r %REQ_FILE% -i https://mirrors.cloud.tencent.com/pypi/simple
-        
+
         if errorlevel 1 (
             echo.
-            echo [ERROR] Installation failed with all mirrors!
+            echo [ERROR] Installation failed!
             pause
             exit /b 1
         )
@@ -59,6 +58,6 @@ if errorlevel 1 (
 echo.
 echo [SUCCESS] Installation complete!
 echo.
-echo Run start_app.bat to launch the application
+echo Run: 启动应用.bat
 echo.
 pause
