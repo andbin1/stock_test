@@ -94,8 +94,25 @@ class DataManager:
         if df.empty:
             return None
 
-        # 转换数据类型
-        df['date'] = pd.to_datetime(df['date'])
+        # 转换数据类型（添加错误处理）
+        try:
+            # 使用 errors='coerce' 将无效日期转换为 NaT，而不是抛出异常
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+
+            # 删除日期解析失败的行
+            invalid_count = df['date'].isna().sum()
+            if invalid_count > 0:
+                print(f"警告: {symbol} 有 {invalid_count} 条记录的日期无效，已删除")
+                df = df.dropna(subset=['date'])
+
+            if df.empty:
+                print(f"错误: {symbol} 所有记录的日期都无效")
+                return None
+
+        except Exception as e:
+            print(f"错误: {symbol} 日期转换失败 - {e}")
+            return None
+
         df = df.rename(columns={'date': '日期', 'close': '收盘', 'open': '开盘',
                                 'high': '高', 'low': '低', 'volume': '成交量',
                                 'amount': '成交额', 'amplitude': '振幅',
@@ -123,8 +140,25 @@ class DataManager:
             if old in df.columns:
                 df = df.rename(columns={old: new})
 
-        # 转换日期格式
-        df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+        # 转换日期格式（添加错误处理）
+        try:
+            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+
+            # 删除日期无效的行
+            invalid_count = df['date'].isna().sum()
+            if invalid_count > 0:
+                print(f"警告: {symbol} 准备保存的数据中有 {invalid_count} 条日期无效，已删除")
+                df = df.dropna(subset=['date'])
+
+            if df.empty:
+                print(f"错误: {symbol} 没有有效的日期数据，取消保存")
+                return False
+
+            # 转换为字符串格式
+            df['date'] = df['date'].dt.strftime('%Y-%m-%d')
+        except Exception as e:
+            print(f"错误: {symbol} 日期格式转换失败 - {e}")
+            return False
 
         # 添加symbol列
         df['symbol'] = symbol
