@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>策略参数配置（可视化） - A股回测系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 参数卡片 */
+        .param-card {
+            background: #ffffff;
+            border: 2px solid #f0f0f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.3s;
+        }
+
+        .param-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+
+        .param-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .param-icon {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .param-info {
+            flex: 1;
+        }
+
+        .param-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .param-desc {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        .param-value-big {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: right;
+        }
+
+        /* 滑块控制区 */
+        .param-control {
+            margin: 15px 0;
+        }
+
+        .slider-container {
+            position: relative;
+            padding: 10px 0;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #e0e0e0;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .range-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .range-indicator {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .range-zone {
+            flex: 1;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 4px;
+            margin: 0 2px;
+        }
+
+        .zone-conservative {
+            background: #e8f5e9;
+            color: #4caf50;
+        }
+
+        .zone-moderate {
+            background: #fff3e0;
+            color: #ff9800;
+        }
+
+        .zone-aggressive {
+            background: #ffebee;
+            color: #f44336;
+        }
+
+        /* 可视化图示 */
+        .param-visual {
+            background: #f9f9f9;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .visual-title {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+
+        .chart-container {
+            height: 80px;
+            background: white;
+            border-radius: 6px;
+            padding: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .chart-line {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            height: 60px;
+            border-left: 2px solid #ddd;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .chart-curve {
+            position: absolute;
+            bottom: 10px;
+            left: 12px;
+            right: 10px;
+            height: 58px;
+        }
+
+        .chart-ma {
+            stroke: #ff9800;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .chart-price {
+            stroke: #2196f3;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .chart-volume {
+            fill: rgba(102, 126, 234, 0.3);
+        }
+
+        /* 实例展示 */
+        .param-example {
+            background: #f0f7ff;
+            border-left: 4px solid #667eea;
+            padding: 12px;
+            margin-top: 10px;
+            border-radius: 4px;
+        }
+
+        .example-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+
+        .example-text {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        /* 推荐标签 */
+        .recommend-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: #4caf50;
+            color: white;
+            font-size: 11px;
+            border-radius: 12px;
+            margin-left: 8px;
+        }
+
+        /* 按钮组 */
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 2px solid #f0f0f0;
+        }
+
+        button {
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #e0e0e0;
+        }
+
+        .btn-back {
+            background: #1890ff;
+            color: white;
+        }
+
+        .btn-back:hover {
+            background: #096dd9;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            display: none;
+            font-size: 14px;
+        }
+
+        .message.success {
+            background: #e8f5e9;
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+
+        .message.error {
+            background: #ffebee;
+            color: #f44336;
+            border: 1px solid #f44336;
+        }
+
+        /* 策略卡片 */
+        .strategy-card {
+            background: white;
+            border: 2px solid #f0f0f0;
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 15px;
+        }
+
+        .strategy-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .strategy-card.active {
+            border-color: #667eea;
+            background: #f0f7ff;
+        }
+
+        .strategy-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+
+        .strategy-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .strategy-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .strategy-desc {
+            font-size: 13px;
+            color: #666;
+            margin-left: 55px;
+            line-height: 1.5;
+        }
+
+        .strategy-tags {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            margin-left: 55px;
+        }
+
+        .strategy-tag {
+            padding: 3px 10px;
+            background: #f0f0f0;
+            color: #666;
+            font-size: 11px;
+            border-radius: 12px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .param-header {
+                flex-direction: column;
+            }
+
+            .param-value-big {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 策略参数配置（可视化）</h1>
+            <p>直观的参数调节界面 - 图示化展现策略参数含义</p>
+        </div>
+
+        <div class="content">
+            <!-- 策略选择 -->
+            <div class="section">
+                <div class="section-title">
+                    🎯 步骤1：选择策略
+                </div>
+
+                <div class="strategy-card active" onclick="selectStrategy('volume_breakout')">
+                    <div class="strategy-header">
+                        <div class="strategy-icon">📈</div>
+                        <div class="strategy-name">量能突破回踩策略</div>
+                    </div>
+                    <div class="strategy-desc">
+                        适合震荡市场，基于成交量放大和均线支撑进行买入，中等风险
+                    </div>
+                    <div class="strategy-tags">
+                        <span class="strategy-tag">中等频率</span>
+                        <span class="strategy-tag">适合所有市场</span>
+                        <span class="strategy-tag">推荐新手</span>
+                    </div>
+                </div>
+
+                <div class="strategy-card" onclick="selectStrategy('steady_trend')">
+                    <div class="strategy-header">
+                        <div class="strategy-icon">🛡️</div>
+                        <div class="strategy-name">稳健趋势策略</div>
+                    </div>
+                    <div class="strategy-desc">
+                        低频交易，严格止损，适合蓝筹股，低风险稳健收益
+                    </div>
+                    <div class="strategy-tags">
+                        <span class="strategy-tag">低频交易</span>
+                        <span class="strategy-tag">适合蓝筹</span>
+                        <span class="strategy-tag">风险低</span>
+                    </div>
+                </div>
+
+                <div class="strategy-card" onclick="selectStrategy('aggressive_momentum')">
+                    <div class="strategy-header">
+                        <div class="strategy-icon">🚀</div>
+                        <div class="strategy-name">激进动量策略</div>
+                    </div>
+                    <div class="strategy-desc">
+                        高频交易，快进快出，适合创业板和科创板，高风险高收益
+                    </div>
+                    <div class="strategy-tags">
+                        <span class="strategy-tag">高频交易</span>
+                        <span class="strategy-tag">适合创业板</span>
+                        <span class="strategy-tag">风险高</span>
+                    </div>
+                </div>
+
+                <div class="strategy-card" onclick="selectStrategy('balanced_multi_factor')">
+                    <div class="strategy-header">
+                        <div class="strategy-icon">⚖️</div>
+                        <div class="strategy-name">平衡多因子策略</div>
+                    </div>
+                    <div class="strategy-desc">
+                        综合多个指标评分，智能择时，适合中证500，平衡风险收益
+                    </div>
+                    <div class="strategy-tags">
+                        <span class="strategy-tag">中等频率</span>
+                        <span class="strategy-tag">适合中证500</span>
+                        <span class="strategy-tag">智能择时</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 参数配置区域（将动态加载） -->
+            <div class="section" id="parametersSection" style="display: none;">
+                <div class="section-title">
+                    🎨 步骤2：调节参数（可视化）
+                </div>
+                <div id="parametersContainer">
+                    <!-- 参数卡片将通过 JavaScript 动态生成 -->
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="button-group">
+                <button class="btn-back" onclick="window.location.href='/'">← 返回主页</button>
+                <button class="btn-secondary" onclick="resetParameters()">重置为默认值</button>
+                <button class="btn-primary" onclick="saveParameters()">💾 保存配置</button>
+            </div>
+
+            <div id="message" class="message"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentStrategy = 'volume_breakout';
+        let parameters = {};
+
+        // 参数可视化配置
+        const parameterVisuals = {
+            'ma_period': {
+                icon: '📊',
+                name: '均线周期',
+                desc: '用于判断上升趋势的均线天数',
+                min: 5,
+                max: 250,
+                step: 5,
+                default: 30,
+                zones: [
+                    {range: [5, 20], label: '短期', color: 'aggressive'},
+                    {range: [20, 60], label: '中期', color: 'moderate'},
+                    {range: [60, 250], label: '长期', color: 'conservative'}
+                ],
+                example: (val) => `使用 ${val} 日均线，股价需在均线之上才考虑买入。数值越大，趋势越稳健但交易机会越少。`,
+                visual: 'ma_chart'
+            },
+            'volume_multiplier': {
+                icon: '📈',
+                name: '量能倍数',
+                desc: '最近3日总量能 vs 20日均量能的倍数',
+                min: 0.5,
+                max: 10,
+                step: 0.5,
+                default: 2,
+                zones: [
+                    {range: [0.5, 2], label: '保守', color: 'conservative'},
+                    {range: [2, 5], label: '适中', color: 'moderate'},
+                    {range: [5, 10], label: '激进', color: 'aggressive'}
+                ],
+                example: (val) => `要求近3日成交量达到20日均量的 ${val} 倍以上。数值越大，信号越强但机会越少。`,
+                visual: 'volume_chart'
+            },
+            'retest_period': {
+                icon: '🔄',
+                name: '回踩周期',
+                desc: '检测价格回踩的短期均线周期',
+                min: 3,
+                max: 20,
+                step: 1,
+                default: 5,
+                zones: [
+                    {range: [3, 7], label: '灵敏', color: 'aggressive'},
+                    {range: [7, 13], label: '平衡', color: 'moderate'},
+                    {range: [13, 20], label: '稳健', color: 'conservative'}
+                ],
+                example: (val) => `使用 ${val} 日均线检测回踩。数值越小，反应越灵敏但误触越多。`,
+                visual: 'retest_chart'
+            },
+            'hold_days': {
+                icon: '⏱️',
+                name: '持有天数',
+                desc: '买入后持有的交易日天数',
+                min: 1,
+                max: 20,
+                step: 1,
+                default: 5,
+                zones: [
+                    {range: [1, 5], label: '短线', color: 'aggressive'},
+                    {range: [5, 10], label: '中线', color: 'moderate'},
+                    {range: [10, 20], label: '长线', color: 'conservative'}
+                ],
+                example: (val) => `买入后持有 ${val} 个交易日自动卖出。持有时间越长，收益波动越大。`,
+                visual: 'hold_chart'
+            },
+            'turnover_min': {
+                icon: '💰',
+                name: '最小成交额',
+                desc: '筛选股票的最小日成交额（亿元）',
+                min: 0.01,
+                max: 100,
+                step: 0.5,
+                default: 0.5,
+                zones: [
+                    {range: [0.01, 1], label: '小盘', color: 'aggressive'},
+                    {range: [1, 10], label: '中盘', color: 'moderate'},
+                    {range: [10, 100], label: '大盘', color: 'conservative'}
+                ],
+                example: (val) => `只选择日成交额 ≥ ${val} 亿元的股票。数值越大，流动性越好但选择越少。`,
+                visual: 'turnover_chart'
+            },
+            'turnover_max': {
+                icon: '🏆',
+                name: '最大成交额',
+                desc: '筛选股票的最大日成交额（亿元）',
+                min: 1,
+                max: 1000,
+                step: 10,
+                default: 1000,
+                zones: [
+                    {range: [1, 100], label: '中小盘', color: 'aggressive'},
+                    {range: [100, 500], label: '大盘', color: 'moderate'},
+                    {range: [500, 1000], label: '超大盘', color: 'conservative'}
+                ],
+                example: (val) => `只选择日成交额 ≤ ${val} 亿元的股票。用于过滤超大市值股票。`,
+                visual: 'turnover_chart'
+            }
+        };
+
+        // 选择策略
+        function selectStrategy(strategy) {
+            currentStrategy = strategy;
+
+            // 更新UI
+            document.querySelectorAll('.strategy-card').forEach(card => {
+                card.classList.remove('active');
+            });
+            event.currentTarget.classList.add('active');
+
+            // 加载策略参数
+            loadStrategyParameters(strategy);
+        }
+
+        // 加载策略参数
+        async function loadStrategyParameters(strategy) {
+            try {
+                const response = await fetch(`/api/strategies/${strategy}/params`);
+                const data = await response.json();
+
+                if (data.success) {
+                    parameters = data.parameters;
+                    renderParameters();
+                    document.getElementById('parametersSection').style.display = 'block';
+                }
+            } catch (error) {
+                console.error('加载参数失败:', error);
+            }
+        }
+
+        // 渲染参数卡片
+        function renderParameters() {
+            const container = document.getElementById('parametersContainer');
+            container.innerHTML = '';
+
+            Object.keys(parameters).forEach(key => {
+                const config = parameterVisuals[key];
+                if (!config) return;
+
+                const value = parameters[key];
+                const card = createParameterCard(key, value, config);
+                container.appendChild(card);
+            });
+        }
+
+        // 创建参数卡片
+        function createParameterCard(key, value, config) {
+            const card = document.createElement('div');
+            card.className = 'param-card';
+            card.innerHTML = `
+                <div class="param-header">
+                    <div class="param-icon">${config.icon}</div>
+                    <div class="param-info">
+                        <div class="param-name">
+                            ${config.name}
+                            ${value >= config.min && value <= (config.min + (config.max - config.min) * 0.4) ?
+                                '<span class="recommend-badge">推荐</span>' : ''}
+                        </div>
+                        <div class="param-desc">${config.desc}</div>
+                    </div>
+                    <div class="param-value-big" id="value_${key}">${value}</div>
+                </div>
+
+                <div class="param-control">
+                    <div class="slider-container">
+                        <input type="range"
+                            id="slider_${key}"
+                            min="${config.min}"
+                            max="${config.max}"
+                            step="${config.step}"
+                            value="${value}"
+                            oninput="updateParameter('${key}', this.value)">
+                    </div>
+                    <div class="range-labels">
+                        <span>${config.min}</span>
+                        <span>${config.max}</span>
+                    </div>
+                </div>
+
+                <div class="range-indicator">
+                    ${config.zones.map(zone => `
+                        <div class="range-zone zone-${zone.color}">
+                            ${zone.label}
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="param-example">
+                    <div class="example-title">📌 参数说明</div>
+                    <div class="example-text" id="example_${key}">
+                        ${config.example(value)}
+                    </div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        // 更新参数
+        function updateParameter(key, value) {
+            value = parseFloat(value);
+            parameters[key] = value;
+
+            // 更新显示
+            document.getElementById(`value_${key}`).textContent = value;
+
+            // 更新示例文本
+            const config = parameterVisuals[key];
+            if (config && config.example) {
+                document.getElementById(`example_${key}`).textContent = config.example(value);
+            }
+        }
+
+        // 保存参数
+        async function saveParameters() {
+            try {
+                const response = await fetch('/api/parameters/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        strategy: currentStrategy,
+                        parameters: parameters
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showMessage('参数保存成功！', 'success');
+                } else {
+                    showMessage('保存失败：' + data.error, 'error');
+                }
+            } catch (error) {
+                showMessage('保存出错：' + error.message, 'error');
+            }
+        }
+
+        // 重置参数
+        function resetParameters() {
+            if (confirm('确定要重置所有参数为默认值吗？')) {
+                Object.keys(parameters).forEach(key => {
+                    const config = parameterVisuals[key];
+                    if (config) {
+                        parameters[key] = config.default;
+                    }
+                });
+                renderParameters();
+                showMessage('已重置为默认值', 'success');
+            }
+        }
+
+        // 显示消息
+        function showMessage(text, type) {
+            const message = document.getElementById('message');
+            message.textContent = text;
+            message.className = 'message ' + type;
+            message.style.display = 'block';
+
+            setTimeout(() => {
+                message.style.display = 'none';
+            }, 3000);
+        }
+
+        // 页面加载时默认加载第一个策略
+        window.onload = () => {
+            loadStrategyParameters('volume_breakout');
+        };
+    </script>
+</body>
+</html>

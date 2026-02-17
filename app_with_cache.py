@@ -46,6 +46,11 @@ def parameters_page():
     """参数配置页面"""
     return render_template('parameters_config.html')
 
+@app.route('/parameters/visual')
+def parameters_visual_page():
+    """参数配置页面（可视化版本）"""
+    return render_template('parameters_config_visual.html')
+
 @app.route('/api/config', methods=['GET'])
 def get_config():
     """获取配置信息"""
