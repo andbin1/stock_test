@@ -944,8 +944,17 @@
             }
 
             document.getElementById('resultTrades').textContent = result.total_trades;
-            document.getElementById('resultReturn').textContent = result.total_return.toFixed(2) + '%';
-            document.getElementById('resultAvg').textContent = result.avg_return.toFixed(2) + '%';
+
+            // 总收益率 - 中国股市习惯：红涨绿跌
+            const totalReturnEl = document.getElementById('resultReturn');
+            totalReturnEl.textContent = result.total_return.toFixed(2) + '%';
+            totalReturnEl.style.color = result.total_return > 0 ? '#f44336' : '#4caf50';  // 红涨绿跌
+
+            // 平均收益 - 中国股市习惯：红涨绿跌
+            const avgReturnEl = document.getElementById('resultAvg');
+            avgReturnEl.textContent = result.avg_return.toFixed(2) + '%';
+            avgReturnEl.style.color = result.avg_return > 0 ? '#f44336' : '#4caf50';  // 红涨绿跌
+
             document.getElementById('resultWinRate').textContent = result.win_rate.toFixed(1) + '%';
 
             const tbody = document.getElementById('tradesTable');
@@ -954,7 +963,7 @@
                     <td>${trade.symbol}</td>
                     <td>${trade.buy_date}</td>
                     <td>${trade.sell_date}</td>
-                    <td style="color: ${trade.return > 0 ? '#4caf50' : '#f44336'}">${trade.return > 0 ? '+' : ''}${trade.return}%</td>
+                    <td style="color: ${trade.return > 0 ? '#f44336' : '#4caf50'}">${trade.return > 0 ? '+' : ''}${trade.return}%</td>
                 </tr>
             `).join('');
 
