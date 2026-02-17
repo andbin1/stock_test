@@ -1,22 +1,23 @@
 # 量化回测系统 - 生产环境依赖
-# Python 3.8+ 需要
+# Python 3.8 - 3.11 推荐使用
+# Python 3.12+ 请使用 requirements_py312.txt
 
 # Web 框架
 Flask==2.3.2
 flask-cors==4.0.0
 
 # 数据处理
-pandas==2.0.2
-numpy==1.24.3
+pandas>=2.0.2,<2.3.0
+numpy>=1.24.3,<1.27.0
 
 # 股票数据源
-efinance==0.2.10
+efinance>=0.2.10
 
 # Excel 导出
-openpyxl==3.10.1
+openpyxl>=3.10.1
 
 # 进度显示
-tqdm==4.65.0
+tqdm>=4.65.0
 
 # 可视化（可选）
 matplotlib>=3.7.0

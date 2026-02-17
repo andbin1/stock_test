@@ -79,6 +79,17 @@ echo [INFO] Using mirror: !MIRROR_NAME!
 echo [INFO] Mirror URL: !MIRROR_URL!
 echo.
 
+REM Detect Python version and select requirements file
+python -c "import sys; exit(0 if sys.version_info >= (3, 12) else 1)" >nul 2>&1
+if errorlevel 1 (
+    set REQ_FILE=requirements_release.txt
+    echo [INFO] Python version ^< 3.12, using requirements_release.txt
+) else (
+    set REQ_FILE=requirements_py312.txt
+    echo [INFO] Python 3.12+ detected, using requirements_py312.txt
+)
+echo.
+
 REM Upgrade pip
 echo [STEP 2] Upgrading pip...
 python -m pip install --upgrade pip -i !MIRROR_URL!
@@ -89,12 +100,13 @@ echo.
 
 REM Install dependencies
 echo [STEP 3] Installing dependencies...
+echo [INFO] Using: !REQ_FILE!
 echo --------------------------------------------------------
 echo.
 echo This may take a few minutes, please wait...
 echo.
 
-pip install -r requirements_release.txt -i !MIRROR_URL!
+pip install -r !REQ_FILE! -i !MIRROR_URL!
 
 if errorlevel 1 (
     echo.
