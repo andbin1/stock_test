@@ -1,19 +1,19 @@
 @echo off
 setlocal enabledelayedexpansion
 
-title Stock Backtest System - Installing Dependencies
+title Installing Dependencies...
 
 echo ========================================================
-echo    Stock Backtest System - Dependency Installer
+echo    Dependency Installer
 echo ========================================================
 echo.
 
-REM Check Python installation
+REM Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python not found!
     echo.
-    echo Please install Python 3.8 or higher first.
+    echo Please install Python 3.8+
     echo Download: https://www.python.org/downloads/
     echo.
     pause
@@ -28,9 +28,7 @@ REM Check Python version
 python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 8 else 1)" >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] Python version might be too old
-    echo This system requires Python 3.8 or higher
-    echo Your version:
-    python --version
+    echo This system requires Python 3.8+
     echo.
     set /p continue="Continue anyway? (Y/N): "
     if /i "!continue!" == "Y" (
@@ -42,33 +40,33 @@ if errorlevel 1 (
     )
 )
 
-REM Detect Python version and select requirements file
+REM Detect Python version
 python -c "import sys; sys.exit(0 if sys.version_info[0] == 3 and sys.version_info[1] >= 12 else 1)" >nul 2>&1
 if errorlevel 1 (
     set REQ_FILE=requirements_release.txt
-    echo [INFO] Python version ^< 3.12, using requirements_release.txt
+    echo [INFO] Using requirements_release.txt
 ) else (
     set REQ_FILE=requirements_py312.txt
-    echo [INFO] Python 3.12+ detected, using requirements_py312.txt
+    echo [INFO] Using requirements_py312.txt for Python 3.12+
 )
 echo.
 
-REM Select pip mirror
-echo [STEP 1] Select pip mirror source:
+REM Select mirror
+echo [STEP 1] Select pip mirror:
 echo.
 echo   1. Tsinghua University (recommended)
 echo   2. Aliyun
 echo   3. Tencent Cloud
 echo   4. Douban
-echo   5. Official PyPI (slow in China)
+echo   5. Official PyPI
 echo.
-set /p mirror="Enter your choice (1-5, default=1): "
+set /p mirror="Enter choice (1-5, default=1): "
 
 if "!mirror!" == "" set mirror=1
 
 if "!mirror!" == "1" (
     set MIRROR_URL=https://pypi.tuna.tsinghua.edu.cn/simple
-    set MIRROR_NAME=Tsinghua University
+    set MIRROR_NAME=Tsinghua
 )
 if "!mirror!" == "2" (
     set MIRROR_URL=https://mirrors.aliyun.com/pypi/simple
@@ -76,7 +74,7 @@ if "!mirror!" == "2" (
 )
 if "!mirror!" == "3" (
     set MIRROR_URL=https://mirrors.cloud.tencent.com/pypi/simple
-    set MIRROR_NAME=Tencent Cloud
+    set MIRROR_NAME=Tencent
 )
 if "!mirror!" == "4" (
     set MIRROR_URL=https://pypi.doubanio.com/simple
@@ -84,19 +82,18 @@ if "!mirror!" == "4" (
 )
 if "!mirror!" == "5" (
     set MIRROR_URL=https://pypi.org/simple
-    set MIRROR_NAME=Official PyPI
+    set MIRROR_NAME=Official
 )
 
 echo.
 echo [INFO] Using mirror: !MIRROR_NAME!
-echo [INFO] Mirror URL: !MIRROR_URL!
 echo.
 
 REM Upgrade pip
 echo [STEP 2] Upgrading pip...
 python -m pip install --upgrade pip -i !MIRROR_URL!
 if errorlevel 1 (
-    echo [WARNING] Failed to upgrade pip, continuing anyway...
+    echo [WARNING] Failed to upgrade pip, continuing...
 )
 echo.
 
@@ -105,7 +102,7 @@ echo [STEP 3] Installing dependencies...
 echo [INFO] Using: !REQ_FILE!
 echo --------------------------------------------------------
 echo.
-echo This may take a few minutes, please wait...
+echo Please wait...
 echo.
 
 pip install -r !REQ_FILE! -i !MIRROR_URL!
@@ -114,31 +111,23 @@ if errorlevel 1 (
     echo.
     echo [ERROR] Installation failed!
     echo.
-    echo Trying alternative mirror sources...
+    echo Trying alternative mirrors...
     echo.
-    
-    REM Try alternative mirrors
-    echo [RETRY 1] Trying Aliyun mirror...
+
+    echo [RETRY 1] Trying Aliyun...
     pip install -r !REQ_FILE! -i https://mirrors.aliyun.com/pypi/simple
-    
+
     if errorlevel 1 (
-        echo [RETRY 2] Trying Tencent mirror...
+        echo [RETRY 2] Trying Tencent...
         pip install -r !REQ_FILE! -i https://mirrors.cloud.tencent.com/pypi/simple
-        
+
         if errorlevel 1 (
             echo.
             echo [ERROR] All mirrors failed!
             echo.
             echo Possible reasons:
-            echo   1. Network connection issues
-            echo   2. Firewall blocking
-            echo   3. Proxy settings needed
-            echo.
-            echo Solutions:
-            echo   - Check network connection
-            echo   - Try running as Administrator
-            echo   - Disable VPN/Proxy temporarily
-            echo   - Contact your network administrator
+            echo   - Network connection issues
+            echo   - Firewall blocking
             echo.
             pause
             exit /b 1
@@ -149,8 +138,8 @@ if errorlevel 1 (
 echo.
 echo --------------------------------------------------------
 echo.
-echo [SUCCESS] Dependencies installed successfully!
+echo [SUCCESS] Dependencies installed!
 echo.
-echo Next step: Run "启动应用.bat" to start the system
+echo Next: Run start_app.bat
 echo.
 pause
