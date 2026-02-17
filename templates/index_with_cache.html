@@ -663,8 +663,19 @@
         // 加载缓存股票数据
         async function loadCachedStocks() {
             try {
+                console.log('[DEBUG] 开始加载缓存股票数据...');
                 const response = await fetch('/api/cache/stocks');
+                console.log('[DEBUG] API响应状态:', response.status);
+
+                if (!response.ok) {
+                    console.error('[ERROR] API返回错误状态:', response.status);
+                    showMessage('backtestMessage', `API错误: ${response.status}`, 'error');
+                    return false;
+                }
+
                 const result = await response.json();
+                console.log('[DEBUG] API返回数据:', result);
+                console.log('[DEBUG] success:', result.success, ', total:', result.total);
 
                 if (result.success) {
                     cachedStocksData = {
@@ -674,25 +685,37 @@
                     };
 
                     // 更新UI显示
-                    document.getElementById('cachedStockCount').textContent = result.total;
+                    const element = document.getElementById('cachedStockCount');
+                    if (element) {
+                        element.textContent = result.total;
+                        console.log('[DEBUG] 已更新UI显示:', result.total);
+                    } else {
+                        console.error('[ERROR] 找不到cachedStockCount元素');
+                    }
                     return true;
                 } else {
-                    showMessage('backtestMessage', '获取缓存数据失败', 'error');
+                    console.error('[ERROR] API返回失败:', result.error);
+                    showMessage('backtestMessage', '获取缓存数据失败: ' + (result.error || '未知错误'), 'error');
                     return false;
                 }
             } catch (error) {
-                console.error('加载缓存数据出错:', error);
-                showMessage('backtestMessage', '获取缓存数据出错', 'error');
+                console.error('[ERROR] 加载缓存数据异常:', error);
+                showMessage('backtestMessage', '获取缓存数据出错: ' + error.message, 'error');
                 return false;
             }
         }
 
         // 刷新缓存数据
         async function refreshCachedStocks() {
+            console.log('[DEBUG] 用户点击刷新按钮');
             showMessage('backtestMessage', '正在刷新...', 'warning');
             const success = await loadCachedStocks();
             if (success) {
-                showMessage('backtestMessage', '✓ 刷新成功', 'success');
+                const count = cachedStocksData.total;
+                showMessage('backtestMessage', `✓ 刷新成功！当前缓存 ${count} 只股票`, 'success');
+                console.log('[DEBUG] 刷新成功, 股票数量:', count);
+            } else {
+                console.log('[DEBUG] 刷新失败');
             }
         }
 
