@@ -1,15 +1,12 @@
 {
-  "current_strategy": "double_ma_cross",
+  "current_strategy": "volume_breakout",
   "params": {
-    "ma_short": 5,
-    "ma_long": 20,
-    "ma_filter": 60,
-    "volume_filter": true,
-    "volume_ratio": 1.5,
-    "use_stop_loss": true,
-    "stop_loss": 0.08,
-    "use_take_profit": true,
-    "take_profit": 0.15,
-    "trailing_stop": 0.05
+    "ma_period": 30,
+    "recent_days": 5,
+    "retest_period": 3,
+    "hold_days": 3,
+    "volume_multiplier": 3,
+    "turnover_min": 0.01,
+    "turnover_max": 1000
   }
 }

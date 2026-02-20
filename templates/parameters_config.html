@@ -19,12 +19,31 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1400px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
             overflow: hidden;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 500px 1fr;
+            gap: 30px;
+        }
+
+        .left-panel {
+            flex-shrink: 0;
+        }
+
+        .right-panel {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            position: sticky;
+            top: 20px;
+            height: fit-content;
         }
 
         .header {
@@ -379,105 +398,142 @@
         </div>
 
         <div class="content">
-            <!-- 策略选择区 -->
-            <div class="section">
-                <div class="section-title">🎯 策略选择</div>
+            <div class="main-content">
+                <!-- 左侧面板：参数配置 -->
+                <div class="left-panel">
+                    <!-- 策略选择区 -->
+                    <div class="section">
+                        <div class="section-title">🎯 策略选择</div>
 
-                <div class="parameter-group">
-                    <div class="parameter-item">
-                        <div class="parameter-label">
-                            <div class="param-name">回测策略</div>
-                            <div class="param-desc">选择要配置的回测策略</div>
+                        <div class="parameter-group">
+                            <div class="parameter-item">
+                                <div class="parameter-label">
+                                    <div class="param-name">回测策略</div>
+                                    <div class="param-desc">选择要配置的回测策略</div>
+                                </div>
+                                <div class="parameter-input">
+                                    <select id="strategySelect" onchange="switchStrategy()"
+                                            style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                                        <option value="">加载中...</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div id="strategyDescription" style="background: #f0f7ff; padding: 12px; border-radius: 6px; font-size: 13px; color: #666; margin-top: 10px;">
+                                请选择策略
+                            </div>
                         </div>
-                        <div class="parameter-input">
-                            <select id="strategySelect" onchange="switchStrategy()"
-                                    style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-                                <option value="">加载中...</option>
-                            </select>
+                    </div>
+
+                    <!-- 参数配置区 -->
+                    <div class="section">
+                        <div class="section-title">📊 策略参数</div>
+
+                        <div class="parameter-group" id="parametersContainer">
+                            <!-- 动态生成参数输入 -->
+                        </div>
+
+                        <div class="button-group">
+                            <button class="btn-primary" onclick="saveParameters()">💾 保存参数</button>
+                            <button class="btn-secondary" onclick="resetToDefault()">🔄 恢复默认</button>
+                            <button class="btn-info" onclick="reloadPage()">🔃 刷新页面</button>
+                            <button class="btn-secondary" onclick="goBackToBacktest()">🏠 返回回测</button>
+                            <button class="btn-secondary" onclick="regenerateKLine()">🎲 重新生成K线</button>
+                        </div>
+
+                        <div id="paramMessage" class="message"></div>
+                    </div>
+
+                    <!-- 参数对比区 -->
+                    <div class="section">
+                        <div class="section-title">📈 参数对比</div>
+
+                        <div class="comparison">
+                            <div class="comparison-box">
+                                <div class="comparison-title">当前参数</div>
+                                <div id="currentParams"></div>
+                            </div>
+
+                            <div class="comparison-box">
+                                <div class="comparison-title">默认参数</div>
+                                <div id="defaultParams"></div>
+                            </div>
                         </div>
                     </div>
 
-                    <div id="strategyDescription" style="background: #f0f7ff; padding: 12px; border-radius: 6px; font-size: 13px; color: #666; margin-top: 10px;">
-                        请选择策略
+                    <!-- 预设管理区 -->
+                    <div class="section">
+                        <div class="section-title">💾 参数预设</div>
+
+                        <div class="preset-section">
+                            <div class="preset-header">
+                                <h3>🎯 保存的预设</h3>
+                                <span id="presetCount" style="font-size: 12px; color: #999;"></span>
+                            </div>
+
+                            <div class="preset-list" id="presetList">
+                                <!-- 动态生成预设列表 -->
+                            </div>
+
+                            <div class="preset-input-group">
+                                <input type="text" id="presetName" placeholder="输入预设名称">
+                                <button class="btn-info" onclick="savePreset()">💾 保存当前为预设</button>
+                            </div>
+
+                            <div id="presetMessage" class="message"></div>
+                        </div>
+                    </div>
+
+                    <!-- 提示信息 -->
+                    <div class="info-box">
+                        <strong>💡 使用提示：</strong><br>
+                        • 参数修改后点击"保存参数"按钮<br>
+                        • 修改后的参数会立即应用到回测<br>
+                        • 可以保存常用的参数组合为预设<br>
+                        • 点击预设名称快速加载预设<br>
+                        • 拖动滑块或直接输入数字修改参数
                     </div>
                 </div>
-            </div>
 
-            <!-- 参数配置区 -->
-            <div class="section">
-                <div class="section-title">📊 策略参数</div>
+                <!-- 右侧面板：图示预览 -->
+                <div class="right-panel">
+                    <div class="section-title" style="margin-bottom: 15px;">📈 信号预览</div>
 
-                <div class="parameter-group" id="parametersContainer">
-                    <!-- 动态生成参数输入 -->
-                </div>
+                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
+                            <strong>说明：</strong>根据当前参数模拟信号
+                        </div>
 
-                <div class="button-group">
-                    <button class="btn-primary" onclick="saveParameters()">💾 保存参数</button>
-                    <button class="btn-secondary" onclick="resetToDefault()">🔄 恢复默认</button>
-                    <button class="btn-info" onclick="reloadPage()">🔃 刷新页面</button>
-                    <button class="btn-secondary" onclick="goBackToBacktest()">🏠 返回回测</button>
-                </div>
-
-                <div id="paramMessage" class="message"></div>
-            </div>
-
-            <!-- 参数对比区 -->
-            <div class="section">
-                <div class="section-title">📈 参数对比</div>
-
-                <div class="comparison">
-                    <div class="comparison-box">
-                        <div class="comparison-title">当前参数</div>
-                        <div id="currentParams"></div>
+                        <!-- K线图示区域 -->
+                        <canvas id="signalChart" width="600" height="400" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;"></canvas>
                     </div>
 
-                    <div class="comparison-box">
-                        <div class="comparison-title">默认参数</div>
-                        <div id="defaultParams"></div>
+                    <!-- 图例说明 -->
+                    <div style="background: white; padding: 12px; border-radius: 8px; font-size: 12px;">
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: #f44336;">▲</span> <strong>买入信号</strong> - 满足所有买入条件
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: #4caf50;">▼</span> <strong>卖出信号</strong> - 达到持有天数
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="color: #ff9800;">━━</span> <strong>均线</strong> - 趋势判断基准
+                        </div>
+                        <div>
+                            <span style="color: #2196f3;">━━</span> <strong>回踩线</strong> - 短期支撑
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- 预设管理区 -->
-            <div class="section">
-                <div class="section-title">💾 参数预设</div>
-
-                <div class="preset-section">
-                    <div class="preset-header">
-                        <h3>🎯 保存的预设</h3>
-                        <span id="presetCount" style="font-size: 12px; color: #999;"></span>
-                    </div>
-
-                    <div class="preset-list" id="presetList">
-                        <!-- 动态生成预设列表 -->
-                    </div>
-
-                    <div class="preset-input-group">
-                        <input type="text" id="presetName" placeholder="输入预设名称">
-                        <button class="btn-info" onclick="savePreset()">💾 保存当前为预设</button>
-                    </div>
-
-                    <div id="presetMessage" class="message"></div>
-                </div>
-            </div>
-
-            <!-- 提示信息 -->
-            <div class="info-box">
-                <strong>💡 使用提示：</strong><br>
-                • 参数修改后点击"保存参数"按钮<br>
-                • 修改后的参数会立即应用到回测<br>
-                • 可以保存常用的参数组合为预设<br>
-                • 点击预设名称快速加载预设<br>
-                • 拖动滑块或直接输入数字修改参数
             </div>
         </div>
-    </div>
 
     <script>
-        let currentParams = {};
-        let defaultParams = {};
-        let currentStrategy = '';
-        let allStrategies = [];
+        // 使用window对象确保全局可访问
+        window.currentParams = {};
+        window.defaultParams = {};
+        window.currentStrategy = '';
+        window.allStrategies = [];
+        window.cachedKLineData = null;  // ✅ 新增：缓存K线数据
 
         // 页面加载时获取参数
         window.addEventListener('load', async () => {
@@ -486,6 +542,11 @@
             renderParameters();
             renderComparison();
             loadPresets();
+
+            // 绘制初始图表
+            setTimeout(() => {
+                drawKLineChart();
+            }, 800);
         });
 
         // 加载所有策略列表
@@ -495,8 +556,8 @@
                 const result = response.json ? await response.json() : JSON.parse(response.data);
 
                 if (result.success) {
-                    allStrategies = result.strategies;
-                    currentStrategy = result.current_strategy;
+                    window.allStrategies = result.strategies;
+                    window.currentStrategy = result.current_strategy;
 
                     // 填充下拉框
                     const select = document.getElementById('strategySelect');
@@ -506,7 +567,7 @@
                         const option = document.createElement('option');
                         option.value = strategy.key;
                         option.textContent = strategy.name;
-                        if (strategy.key === currentStrategy) {
+                        if (strategy.key === window.currentStrategy) {
                             option.selected = true;
                         }
                         select.appendChild(option);
@@ -525,7 +586,7 @@
 
         // 更新策略描述
         function updateStrategyDescription() {
-            const strategy = allStrategies.find(s => s.key === currentStrategy);
+            const strategy = window.allStrategies.find(s => s.key === window.currentStrategy);
             if (strategy) {
                 document.getElementById('strategyDescription').innerHTML =
                     `<strong>${strategy.name}</strong><br>${strategy.description}`;
@@ -537,12 +598,12 @@
             const select = document.getElementById('strategySelect');
             const newStrategy = select.value;
 
-            if (newStrategy === currentStrategy) {
+            if (newStrategy === window.currentStrategy) {
                 return;
             }
 
             if (!confirm(`确定切换到策略: ${select.options[select.selectedIndex].text}？`)) {
-                select.value = currentStrategy;
+                select.value = window.currentStrategy;
                 return;
             }
 
@@ -558,7 +619,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    currentStrategy = newStrategy;
+                    window.currentStrategy = newStrategy;
                     updateStrategyDescription();
 
                     // 重新加载参数
@@ -566,14 +627,24 @@
                     renderParameters();
                     renderComparison();
 
+                    // ✅ 新增：清空K线缓存，下次绘制时重新生成
+                    window.cachedKLineData = null;
+
+                    // 重新绘制图表（可能显示不支持的提示）
+                    setTimeout(() => {
+                        if (typeof drawKLineChart === 'function') {
+                            drawKLineChart();
+                        }
+                    }, 500);
+
                     showMessage('paramMessage', result.message, 'success');
                 } else {
                     showMessage('paramMessage', result.error || '切换失败', 'error');
-                    select.value = currentStrategy;
+                    select.value = window.currentStrategy;
                 }
             } catch (error) {
                 showMessage('paramMessage', '切换策略失败: ' + error.message, 'error');
-                select.value = currentStrategy;
+                select.value = window.currentStrategy;
             }
         }
 
@@ -585,8 +656,8 @@
 
                 if (result.success) {
                     const info = result.data;
-                    currentParams = info.current_params;
-                    defaultParams = info.default_params;
+                    window.currentParams = info.current_params;
+                    window.defaultParams = info.default_params;
                 } else {
                     showMessage('paramMessage', '加载参数失败: ' + result.error, 'error');
                 }
@@ -704,7 +775,7 @@
 
             container.innerHTML = '';
 
-            for (const [key, value] of Object.entries(currentParams)) {
+            for (const [key, value] of Object.entries(window.currentParams)) {
                 const range = ranges[key] || {min: 0, max: 100, step: 1};
                 const desc = descriptions[key] || key;
 
@@ -741,8 +812,16 @@
             let value = rangeInput.value;
             numberInput.value = value;
 
-            currentParams[paramName] = parseFloat(value);
+            window.currentParams[paramName] = parseFloat(value);
             display.textContent = value;
+
+            // 实时更新图表（防抖）
+            clearTimeout(window.chartUpdateTimer);
+            window.chartUpdateTimer = setTimeout(() => {
+                if (typeof drawKLineChart === 'function') {
+                    drawKLineChart();
+                }
+            }, 300);
         }
 
         // 保存参数
@@ -751,13 +830,13 @@
                 const response = await fetch('/api/parameters/update', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({params: currentParams})
+                    body: JSON.stringify({params: window.currentParams})
                 });
 
                 const result = await response.json();
 
                 if (result.success) {
-                    currentParams = result.new_params;
+                    window.currentParams = result.new_params;
                     renderComparison();
                     showMessage('paramMessage', '✓ 参数已保存，将应用到下次回测', 'success');
                 } else {
@@ -782,7 +861,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    currentParams = result.new_params;
+                    window.currentParams = result.new_params;
                     renderParameters();
                     renderComparison();
                     showMessage('paramMessage', '✓ 已恢复为默认参数', 'success');
@@ -796,14 +875,14 @@
 
         // 渲染参数对比
         function renderComparison() {
-            const currentHTML = Object.entries(currentParams).map(([key, value]) => `
+            const currentHTML = Object.entries(window.currentParams).map(([key, value]) => `
                 <div class="comparison-item">
                     <span class="comparison-label">${key}</span>
                     <span class="comparison-value">${value}</span>
                 </div>
             `).join('');
 
-            const defaultHTML = Object.entries(defaultParams).map(([key, value]) => `
+            const defaultHTML = Object.entries(window.defaultParams).map(([key, value]) => `
                 <div class="comparison-item">
                     <span class="comparison-label">${key}</span>
                     <span class="comparison-value">${value}</span>
@@ -890,7 +969,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    currentParams = result.new_params;
+                    window.currentParams = result.new_params;
                     renderParameters();
                     renderComparison();
                     showMessage('presetMessage', result.message, 'success');
@@ -946,6 +1025,348 @@
         function goBackToBacktest() {
             window.location.href = '/';
         }
+
+        // 重新生成K线数据
+        function regenerateKLine() {
+            window.cachedKLineData = null;
+            if (typeof drawKLineChart === 'function') {
+                drawKLineChart();
+            }
+            showMessage('paramMessage', '✓ K线数据已重新生成', 'success');
+        }
+
+        // ==================== K线图示功能 ====================
+
+        // 生成模拟K线数据
+        function generateMockKLineData(days = 60) {
+            const data = [];
+            let price = 10 + Math.random() * 5;
+            const baseDate = new Date();
+            baseDate.setDate(baseDate.getDate() - days);
+
+            for (let i = 0; i < days; i++) {
+                const date = new Date(baseDate);
+                date.setDate(date.getDate() + i);
+
+                // 模拟价格波动
+                const change = (Math.random() - 0.48) * 0.5;
+                price = price * (1 + change);
+
+                const open = price;
+                const high = price * (1 + Math.random() * 0.03);
+                const low = price * (1 - Math.random() * 0.03);
+                const close = low + (high - low) * Math.random();
+                const volume = (50 + Math.random() * 100) * 10000;
+
+                data.push({
+                    date: date.toISOString().split('T')[0],
+                    open: open,
+                    high: high,
+                    low: low,
+                    close: close,
+                    volume: volume
+                });
+            }
+
+            return data;
+        }
+
+        // 计算均线
+        function calculateMA(data, period) {
+            const ma = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) {
+                    ma.push(null);
+                } else {
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) {
+                        sum += data[i - j].close;
+                    }
+                    ma.push(sum / period);
+                }
+            }
+            return ma;
+        }
+
+        // 计算成交量均线
+        function calculateVolumeMA(data, period) {
+            const ma = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) {
+                    ma.push(null);
+                } else {
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) {
+                        sum += data[i - j].volume;
+                    }
+                    ma.push(sum / period);
+                }
+            }
+            return ma;
+        }
+
+        // 检测买入信号
+        function detectBuySignals(data, params) {
+            const signals = [];
+            const ma = calculateMA(data, params.ma_period || 30);
+            const retestMA = calculateMA(data, params.retest_period || 5);
+            const volumeMA = calculateVolumeMA(data, 20);
+
+            for (let i = Math.max(params.ma_period || 30, 20); i < data.length; i++) {
+                // 买入条件（简化版，便于可视化）：
+                // 1. 价格在长期均线上方（趋势向上）
+                // 2. 价格接近短期均线（回踩机会，范围±8%）
+                // 3. 成交量放大（最近3天 vs 1天均量）
+                const priceAboveMA = data[i].close > ma[i];
+                const nearRetestMA = Math.abs(data[i].close - retestMA[i]) / retestMA[i] < 0.08;
+
+                // 计算最近3天总量能
+                let recentVolume = 0;
+                for (let j = 0; j < 3 && i - j >= 0; j++) {
+                    recentVolume += data[i - j].volume;
+                }
+                // 简化量能条件：最近3天总量 vs 1天均量 × 量能倍数
+                const volumeSpike = recentVolume > (volumeMA[i] * (params.volume_multiplier || 2));
+
+                if (priceAboveMA && nearRetestMA && volumeSpike) {
+                    signals.push({
+                        index: i,
+                        type: 'buy',
+                        price: data[i].close
+                    });
+                }
+            }
+
+            return signals;
+        }
+
+        // 绘制K线图
+        function drawKLineChart() {
+            const canvas = document.getElementById('signalChart');
+            if (!canvas || !canvas.getContext) return;
+
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+
+            // 清空画布
+            ctx.clearRect(0, 0, width, height);
+
+            // 检查当前策略是否支持图表预览
+            const supportedStrategies = ['volume_breakout'];
+            const currentStrategy = window.currentStrategy || '';
+
+            if (!supportedStrategies.includes(currentStrategy)) {
+                // 显示提示信息
+                ctx.fillStyle = '#666';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('当前策略暂不支持图表预览', width / 2, height / 2 - 20);
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#999';
+                ctx.fillText('仅"量能突破回踩策略"支持信号可视化', width / 2, height / 2 + 10);
+                return;
+            }
+
+            // 生成数据（只在第一次或缓存为空时生成数据）
+            // 减少K线数量到40根，让每根K线更宽更明显
+            if (!window.cachedKLineData) {
+                window.cachedKLineData = generateMockKLineData(40);
+            }
+            const data = window.cachedKLineData;
+            const params = window.currentParams || {};
+
+            // 计算指标
+            const ma = calculateMA(data, params.ma_period || 30);
+            const retestMA = calculateMA(data, params.retest_period || 5);
+            const buySignals = detectBuySignals(data, params);
+
+            // 计算卖出信号（买入后N天）
+            const sellSignals = buySignals.map(signal => ({
+                index: Math.min(signal.index + (params.hold_days || 5), data.length - 1),
+                type: 'sell',
+                price: data[Math.min(signal.index + (params.hold_days || 5), data.length - 1)].close,
+                buyIndex: signal.index
+            }));
+
+            // 计算价格范围
+            const prices = data.map(d => [d.high, d.low]).flat();
+            const maxPrice = Math.max(...prices);
+            const minPrice = Math.min(...prices);
+            const priceRange = maxPrice - minPrice;
+
+            // 图表区域划分
+            const chartHeight = height * 0.7;  // 70% for price
+            const volumeHeight = height * 0.25; // 25% for volume
+            const padding = 40;
+
+            // 计算X轴每根K线的宽度
+            const barWidth = (width - padding * 2) / data.length;
+            const candleWidth = barWidth * 0.8;  // 增加到0.8，让K线更宽更明显
+
+            // 辅助函数：价格转Y坐标
+            function priceToY(price) {
+                return padding + (maxPrice - price) / priceRange * (chartHeight - padding);
+            }
+
+            // 辅助函数：成交量转高度
+            const maxVolume = Math.max(...data.map(d => d.volume));
+            function volumeToHeight(volume) {
+                return (volume / maxVolume) * volumeHeight;
+            }
+
+            // 1. 绘制背景网格
+            ctx.strokeStyle = '#f0f0f0';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 5; i++) {
+                const y = padding + (chartHeight - padding) * i / 4;
+                ctx.beginPath();
+                ctx.moveTo(padding, y);
+                ctx.lineTo(width - padding, y);
+                ctx.stroke();
+            }
+
+            // 2. 绘制K线（实体柱状图：从最低价到最高价的完整柱子）
+            data.forEach((d, i) => {
+                const x = padding + i * barWidth + barWidth / 2;
+                const isRed = d.close > d.open;  // 中国习惯：红涨绿跌
+
+                // 绘制从最低价到最高价的完整柱子
+                const top = priceToY(d.high);
+                const bottom = priceToY(d.low);
+                const barHeight = bottom - top;
+
+                ctx.fillStyle = isRed ? '#e53935' : '#43a047';
+                ctx.fillRect(x - candleWidth / 2, top, candleWidth, Math.max(barHeight, 2));
+            });
+
+            // 3. 绘制均线
+            if (ma.length > 0) {
+                ctx.strokeStyle = '#ff9800';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                let started = false;
+                ma.forEach((m, i) => {
+                    if (m !== null) {
+                        const x = padding + i * barWidth + barWidth / 2;
+                        const y = priceToY(m);
+                        if (!started) {
+                            ctx.moveTo(x, y);
+                            started = true;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                });
+                ctx.stroke();
+            }
+
+            // 4. 绘制回踩均线
+            if (retestMA.length > 0) {
+                ctx.strokeStyle = '#2196f3';
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                let started = false;
+                retestMA.forEach((m, i) => {
+                    if (m !== null) {
+                        const x = padding + i * barWidth + barWidth / 2;
+                        const y = priceToY(m);
+                        if (!started) {
+                            ctx.moveTo(x, y);
+                            started = true;
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                });
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            // 5. 绘制成交量（增加透明度和宽度）
+            const volumeBaseY = chartHeight + 20;
+            data.forEach((d, i) => {
+                const x = padding + i * barWidth + barWidth / 2;
+                const h = volumeToHeight(d.volume);
+                const isRed = d.close > d.open;
+
+                // 使用更高的不透明度（0.8）让成交量更明显
+                ctx.fillStyle = isRed ? 'rgba(229, 57, 53, 0.8)' : 'rgba(67, 160, 71, 0.8)';
+                ctx.fillRect(x - candleWidth / 2, volumeBaseY + volumeHeight - h, candleWidth, h);
+            });
+
+            // 6. 绘制买入信号
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            buySignals.forEach(signal => {
+                const x = padding + signal.index * barWidth + barWidth / 2;
+                const y = priceToY(signal.price) - 15;
+
+                ctx.fillStyle = '#f44336';
+                ctx.fillText('▲', x, y);
+            });
+
+            // 7. 绘制卖出信号
+            sellSignals.forEach(signal => {
+                const x = padding + signal.index * barWidth + barWidth / 2;
+                const y = priceToY(signal.price) + 20;
+
+                ctx.fillStyle = '#4caf50';
+                ctx.fillText('▼', x, y);
+
+                // 连线显示持有期
+                const buyX = padding + signal.buyIndex * barWidth + barWidth / 2;
+                const buyY = priceToY(data[signal.buyIndex].close);
+
+                ctx.strokeStyle = 'rgba(255, 152, 0, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(buyX, buyY);
+                ctx.lineTo(x, priceToY(signal.price));
+                ctx.stroke();
+            });
+
+            // 8. 绘制坐标轴标签
+            ctx.fillStyle = '#666';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'right';
+
+            // Y轴价格标签
+            for (let i = 0; i < 5; i++) {
+                const price = maxPrice - (priceRange * i / 4);
+                const y = padding + (chartHeight - padding) * i / 4;
+                ctx.fillText(price.toFixed(2), padding - 5, y + 4);
+            }
+
+            // X轴日期标签（只显示部分）
+            ctx.textAlign = 'center';
+            for (let i = 0; i < data.length; i += Math.floor(data.length / 5)) {
+                const x = padding + i * barWidth + barWidth / 2;
+                const date = data[i].date.substring(5);  // MM-DD
+                ctx.fillText(date, x, height - 5);
+            }
+
+            // 9. 绘制参数提示
+            ctx.fillStyle = '#333';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`MA${params.ma_period || 30} | MA${params.retest_period || 5} | 量能${params.volume_multiplier || 2}倍 | 持有${params.hold_days || 5}天`, padding, 15);
+
+            // 信号统计
+            ctx.fillText(`买入信号: ${buySignals.length} 个 | 卖出信号: ${sellSignals.length} 个`, padding, height - volumeHeight - 10);
+        }
+
+        // 策略切换后重新绘制图表（增强原有函数）
+        const _originalSwitchStrategy = switchStrategy;
+        switchStrategy = async function() {
+            await _originalSwitchStrategy();
+            setTimeout(() => {
+                if (typeof drawKLineChart === 'function') {
+                    drawKLineChart();
+                }
+            }, 500);
+        };
     </script>
 </body>
 </html>

@@ -20,7 +20,7 @@ except ImportError:
     DoubleMACrossStrategy = None
     GridTradingStrategy = None
     TurtleTradingStrategy = None
-from export_to_excel import export_detailed_trades_to_excel
+from export_to_excel import export_detailed_trades_to_excel, export_batch_results_to_excel
 from backtest_engine import BacktestEngine
 from data_manager import DataManager
 from data_fetcher import get_index_constituents
@@ -644,6 +644,88 @@ def manage_preset():
                 }), 400
 
     except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/backtest/export-trades', methods=['POST'])
+def export_trades_to_excel():
+    """导出回测交易记录到Excel"""
+    try:
+        data = request.json
+        symbols = data.get('symbols', [])
+        strategy_key = data.get('strategy', None)
+        custom_params = data.get('params', None)
+
+        # 确定使用的策略和参数
+        if strategy_key is None:
+            strategy_key = config_manager.get_current_strategy()
+
+        if custom_params is None:
+            params = config_manager.get_strategy_params(strategy_key)
+        else:
+            params = custom_params
+
+        # 动态导入策略类
+        strategy_classes = {
+            'VolumeBreakoutStrategy': VolumeBreakoutStrategy,
+            'SteadyTrendStrategy': SteadyTrendStrategy,
+            'AggressiveMomentumStrategy': AggressiveMomentumStrategy,
+            'BalancedMultiFactorStrategy': BalancedMultiFactorStrategy,
+        }
+
+        # 添加新策略（如果可用）
+        if NEW_STRATEGIES_AVAILABLE:
+            strategy_classes['DoubleMACrossStrategy'] = DoubleMACrossStrategy
+            strategy_classes['GridTradingStrategy'] = GridTradingStrategy
+            strategy_classes['TurtleTradingStrategy'] = TurtleTradingStrategy
+
+        class_name = STRATEGY_MAP[strategy_key]['class_name']
+        StrategyClass = strategy_classes[class_name]
+
+        # 创建策略实例
+        strategy = StrategyClass(params)
+
+        if not symbols:
+            return jsonify({
+                'success': False,
+                'error': '没有可导出的股票数据'
+            }), 400
+
+        # 加载缓存数据并运行回测
+        all_data = {}
+        for symbol in symbols:
+            df = manager.get_data_from_cache(symbol)
+            if df is not None and len(df) > 0:
+                all_data[symbol] = df
+
+        if not all_data:
+            return jsonify({
+                'success': False,
+                'error': '没有可用的缓存数据'
+            }), 400
+
+        # 运行回测
+        engine = BacktestEngine()
+        results = engine.run_multiple_stocks(all_data, strategy)
+
+        # 生成Excel文件
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'回测交易明细_{timestamp}.xlsx'
+        filepath = os.path.join(os.getcwd(), filename)
+
+        # 使用现有的导出函数
+        export_batch_results_to_excel(results, output_file=filepath)
+
+        # 发送文件
+        return send_file(
+            filepath,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 400
 
 @app.route('/api/health', methods=['GET'])

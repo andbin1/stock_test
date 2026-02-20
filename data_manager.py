@@ -5,6 +5,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 import pickle
+import time
 
 from data_fetcher import get_stock_data
 from config import START_DATE, END_DATE
@@ -23,11 +24,12 @@ class DataManager:
 
     def __init__(self):
         self.db_file = DB_FILE
+        self.db_timeout = 30.0  # 数据库连接超时时间（秒）
         self._init_db()
 
     def _init_db(self):
         """初始化数据库"""
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
 
         # 创建表：股票日线数据
@@ -81,7 +83,7 @@ class DataManager:
         start_date = convert_date_format(start_date)
         end_date = convert_date_format(end_date)
 
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         query = f'''
             SELECT * FROM stock_data
             WHERE symbol = ? AND date >= ? AND date <= ?
@@ -175,37 +177,68 @@ class DataManager:
 
         df = df[cols_to_keep]
 
-        # 保存到数据库
-        conn = sqlite3.connect(self.db_file)
-        try:
-            cursor = conn.cursor()
+        # 保存到数据库（添加重试机制）
+        max_retries = 3
+        retry_delay = 1  # 秒
 
-            # 逐行插入以处理UNIQUE约束
-            for _, row in df.iterrows():
-                cursor.execute('''
-                    INSERT OR IGNORE INTO stock_data
-                    (symbol, date, open, close, high, low, volume, amount, amplitude, pct_change, change, turnover_rate)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', tuple(row))
+        for attempt in range(max_retries):
+            try:
+                conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
+                cursor = conn.cursor()
 
-            conn.commit()
+                # 逐行插入以处理UNIQUE约束
+                for _, row in df.iterrows():
+                    cursor.execute('''
+                        INSERT OR IGNORE INTO stock_data
+                        (symbol, date, open, close, high, low, volume, amount, amplitude, pct_change, change, turnover_rate)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', tuple(row))
 
-            # 更新日志
-            last_date = df['date'].max() if len(df) > 0 else None
-            self._update_log(symbol, len(df), last_date)
+                conn.commit()
 
-            print(f"✓ {symbol}: 已保存 {len(df)} 条数据到本地缓存")
-            return True
-        except Exception as e:
-            print(f"✗ {symbol}: 保存失败 - {e}")
-            conn.rollback()
-            return False
-        finally:
-            conn.close()
+                # 更新日志
+                last_date = df['date'].max() if len(df) > 0 else None
+                self._update_log(symbol, len(df), last_date)
+
+                print(f"✓ {symbol}: 已保存 {len(df)} 条数据到本地缓存")
+                conn.close()
+                return True
+
+            except sqlite3.OperationalError as e:
+                # 数据库锁错误，进行重试
+                if "locked" in str(e).lower() and attempt < max_retries - 1:
+                    print(f"⚠️  {symbol}: 数据库被锁定，{retry_delay}秒后重试 (尝试 {attempt + 1}/{max_retries})")
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # 指数退避
+                    try:
+                        conn.rollback()
+                        conn.close()
+                    except:
+                        pass
+                    continue
+                else:
+                    print(f"✗ {symbol}: 保存失败 - {e}")
+                    try:
+                        conn.rollback()
+                        conn.close()
+                    except:
+                        pass
+                    return False
+
+            except Exception as e:
+                print(f"✗ {symbol}: 保存失败 - {e}")
+                try:
+                    conn.rollback()
+                    conn.close()
+                except:
+                    pass
+                return False
+
+        return False
 
     def _update_log(self, symbol: str, count: int, last_date: str = None):
         """更新日志表"""
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
 
         cursor.execute('''
@@ -222,7 +255,7 @@ class DataManager:
 
         规则：如果今天还没有更新过，返回True
         """
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
 
         try:
@@ -318,7 +351,7 @@ class DataManager:
     def update_single_stock(self, symbol: str) -> bool:
         """更新单只股票的数据（增量更新）"""
         # 获取本地最新日期
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
         cursor.execute('SELECT MAX(date) FROM stock_data WHERE symbol = ?', (symbol,))
         result = cursor.fetchone()
@@ -348,7 +381,7 @@ class DataManager:
 
     def get_all_cached_stocks(self) -> list:
         """获取所有已缓存的股票代码列表"""
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
 
         # 获取所有不同的股票代码
@@ -361,7 +394,7 @@ class DataManager:
 
     def get_cache_status(self) -> dict:
         """获取缓存状态"""
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
 
         # 获取总数据量
@@ -390,7 +423,7 @@ class DataManager:
 
     def clear_cache(self, symbol: str = None):
         """清空缓存"""
-        conn = sqlite3.connect(self.db_file)
+        conn = sqlite3.connect(self.db_file, timeout=self.db_timeout)
         cursor = conn.cursor()
 
         if symbol:

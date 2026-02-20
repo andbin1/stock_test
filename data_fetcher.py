@@ -51,8 +51,8 @@ def get_index_constituents(index_code: str, limit: int = None) -> list:
         a_stocks = cy_stocks
 
     elif index_code == "000688":  # 科创板
-        # 科创板：688000-689999
-        kc_stocks = generate_stock_codes("688", 0, 999)
+        # 科创板：688001-688999（注意：688000 不存在，从 688001 开始）
+        kc_stocks = generate_stock_codes("688", 1, 999)
         a_stocks = kc_stocks
 
     elif index_code == "399001":  # 深成指

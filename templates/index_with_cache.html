@@ -607,12 +607,28 @@
                             </div>
                         </div>
 
+                        <!-- 交易记录展示 -->
+                        <div style="margin-top: 20px; margin-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <div class="section-title" style="margin-bottom: 0;">📋 交易记录（前20条）</div>
+                                <button class="btn-primary" onclick="exportToExcel()" style="width: auto; padding: 8px 20px; font-size: 13px;">
+                                    📥 导出完整Excel
+                                </button>
+                            </div>
+                            <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
+                                点击"导出完整Excel"可下载所有交易记录的详细数据
+                            </p>
+                        </div>
+
                         <table class="table">
                             <thead>
                                 <tr>
+                                    <th>序号</th>
                                     <th>代码</th>
                                     <th>买入日期</th>
+                                    <th>买入价</th>
                                     <th>卖出日期</th>
+                                    <th>卖出价</th>
                                     <th>收益率</th>
                                 </tr>
                             </thead>
@@ -786,7 +802,7 @@
 
         // 跳转到参数配置页面
         function goToParameters() {
-            window.location.href = '/parameters/visual';  // 使用可视化版本
+            window.location.href = '/parameters';  // 使用带K线图表的优化版本
         }
 
 
@@ -922,6 +938,8 @@
 
                 // 显示结果（复用现有的displayBacktestResults函数）
                 if (result.success) {
+                    // 保存当前回测的股票代码，用于Excel导出
+                    currentBacktestSymbols = symbols;
                     displayBacktestResults(result);
                     showMessage('backtestMessage', '✓ 回测完成', 'success');
                 } else {
@@ -935,6 +953,9 @@
                 document.getElementById('backtestLoading').classList.remove('active');
             }
         }
+
+        // 全局变量：存储当前回测的股票代码（用于Excel导出）
+        let currentBacktestSymbols = [];
 
         // 显示回测结果
         function displayBacktestResults(result) {
@@ -957,17 +978,77 @@
 
             document.getElementById('resultWinRate').textContent = result.win_rate.toFixed(1) + '%';
 
+            // 更新交易记录表格（带序号、更多字段）
             const tbody = document.getElementById('tradesTable');
-            tbody.innerHTML = result.trades.map(trade => `
+            tbody.innerHTML = result.trades.map((trade, index) => `
                 <tr>
+                    <td>${index + 1}</td>
                     <td>${trade.symbol}</td>
                     <td>${trade.buy_date}</td>
+                    <td>${trade.buy_price.toFixed(2)}</td>
                     <td>${trade.sell_date}</td>
-                    <td style="color: ${trade.return > 0 ? '#f44336' : '#4caf50'}">${trade.return > 0 ? '+' : ''}${trade.return}%</td>
+                    <td>${trade.sell_price.toFixed(2)}</td>
+                    <td style="color: ${trade.return > 0 ? '#f44336' : '#4caf50'}; font-weight: bold;">
+                        ${trade.return > 0 ? '+' : ''}${trade.return.toFixed(2)}%
+                    </td>
                 </tr>
             `).join('');
 
             document.getElementById('backtestResults').classList.add('active');
+        }
+
+        // 导出到Excel
+        async function exportToExcel() {
+            try {
+                if (currentBacktestSymbols.length === 0) {
+                    showMessage('backtestMessage', '没有可导出的数据，请先运行回测', 'error');
+                    return;
+                }
+
+                showMessage('backtestMessage', '正在生成Excel文件...', 'warning');
+
+                const response = await fetch('/api/backtest/export-trades', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        symbols: currentBacktestSymbols
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    showMessage('backtestMessage', '导出失败: ' + (errorData.error || '未知错误'), 'error');
+                    return;
+                }
+
+                // 下载文件
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+
+                // 从响应头获取文件名，如果没有则使用默认名
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = '回测交易明细.xlsx';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+                    if (filenameMatch && filenameMatch[1]) {
+                        filename = filenameMatch[1].replace(/['"]/g, '');
+                    }
+                }
+
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+
+                showMessage('backtestMessage', '✓ Excel文件已下载', 'success');
+
+            } catch (error) {
+                console.error('导出Excel失败:', error);
+                showMessage('backtestMessage', '导出Excel失败: ' + error.message, 'error');
+            }
         }
 
         // 更新缓存状态
