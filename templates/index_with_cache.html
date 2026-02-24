@@ -436,6 +436,76 @@
             margin-top: 8px;
         }
 
+        /* 交易配置相关样式 */
+        .trading-settings-section {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #667eea;
+        }
+
+        .trading-settings-section .input-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .trading-settings-section input,
+        .trading-settings-section select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .trading-settings-section input:focus,
+        .trading-settings-section select:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .input-hint {
+            font-size: 12px;
+            color: #999;
+            display: block;
+            margin-top: 4px;
+        }
+
+        .config-preview {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 15px 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .preview-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        .preview-label {
+            font-size: 12px;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .preview-value {
+            font-size: 14px;
+            color: #333;
+            font-weight: bold;
+        }
+
         @media (max-width: 480px) {
             .button-group {
                 grid-template-columns: 1fr;
@@ -457,6 +527,10 @@
             .checkbox-group {
                 flex-direction: column;
                 gap: 10px;
+            }
+
+            .config-preview {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -515,6 +589,84 @@
 
             <!-- 标签页2: 回测 -->
             <div class="tab-content" id="backtest">
+                <!-- 交易配置面板 -->
+                <div class="trading-settings-section">
+                    <h3 class="section-title">💰 交易配置</h3>
+
+                    <!-- 初始资金配置 -->
+                    <div class="input-group">
+                        <label for="initialCapital">初始资金 (元)</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="initialCapital" name="initialCapital"
+                                   min="10000" max="10000000" value="100000" step="10000">
+                            <span class="input-hint">范围: 10,000 ~ 10,000,000</span>
+                        </div>
+                    </div>
+
+                    <!-- 交易占比配置 -->
+                    <div class="input-group">
+                        <label for="positionRatioSelect">单笔交易占比</label>
+                        <div class="input-wrapper">
+                            <select id="positionRatioSelect" name="positionRatioSelect">
+                                <option value="0.333">1/3 (33.3%)</option>
+                                <option value="0.2" selected>1/5 (20%)</option>
+                                <option value="0.1">1/10 (10%)</option>
+                                <option value="custom">自定义</option>
+                            </select>
+                            <input type="number" id="positionRatioCustom" name="positionRatioCustom"
+                                   min="0.01" max="0.99" value="0.2" step="0.01" style="display:none; margin-top: 8px;">
+                            <span class="input-hint">建议: 1/3、1/5、1/10 或自定义 (1%-99%)</span>
+                        </div>
+                    </div>
+
+                    <!-- 手续费配置 -->
+                    <div class="input-group">
+                        <label for="commissionRate">手续费率 (%)</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="commissionRate" name="commissionRate"
+                                   min="0" max="100" value="0.1" step="0.01">
+                            <span class="input-hint">范围: 0% ~ 100%，默认0.1% (万1)</span>
+                        </div>
+                    </div>
+
+                    <!-- 滑点配置 -->
+                    <div class="input-group">
+                        <label for="slippage">滑点 (%)</label>
+                        <div class="input-wrapper">
+                            <input type="number" id="slippage" name="slippage"
+                                   min="0" max="5" value="0" step="0.01">
+                            <span class="input-hint">范围: 0% ~ 5%，0表示无滑点</span>
+                        </div>
+                    </div>
+
+                    <!-- 配置预览 -->
+                    <div class="config-preview">
+                        <div class="preview-item">
+                            <span class="preview-label">初始资金:</span>
+                            <span class="preview-value" id="previewCapital">¥100,000</span>
+                        </div>
+                        <div class="preview-item">
+                            <span class="preview-label">单笔交易额:</span>
+                            <span class="preview-value" id="previewTradeAmount">¥20,000</span>
+                        </div>
+                        <div class="preview-item">
+                            <span class="preview-label">手续费:</span>
+                            <span class="preview-value" id="previewCommission">0.1%</span>
+                        </div>
+                        <div class="preview-item">
+                            <span class="preview-label">滑点:</span>
+                            <span class="preview-value" id="previewSlippage">0%</span>
+                        </div>
+                    </div>
+
+                    <!-- 保存配置按钮 -->
+                    <button id="saveSettingsBtn" class="btn btn-primary" style="width: 100%; margin-bottom: 20px;">
+                        💾 保存配置
+                    </button>
+
+                    <div id="settingsMessage"></div>
+                </div>
+
                 <div class="section">
                     <div class="section-title">🔄 回测设置</div>
 
@@ -583,9 +735,25 @@
                     <div class="results" id="backtestResults">
                         <div class="section-title">📈 回测结果</div>
 
-                        <!-- 显示使用的策略 -->
-                        <div style="background: #f0f7ff; padding: 10px; border-radius: 6px; margin-bottom: 15px; font-size: 13px;">
-                            <strong>使用策略:</strong> <span id="resultStrategyName">-</span>
+                        <!-- 显示使用的策略和交易配置 -->
+                        <div style="background: #f0f7ff; padding: 12px; border-radius: 6px; margin-bottom: 15px; font-size: 13px;">
+                            <div style="margin-bottom: 8px;">
+                                <strong>使用策略:</strong> <span id="resultStrategyName">-</span>
+                            </div>
+                            <div style="border-top: 1px solid #ddd; padding-top: 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <div>
+                                    <strong>初始资金:</strong> <span id="resultInitialCapital">-</span>
+                                </div>
+                                <div>
+                                    <strong>交易占比:</strong> <span id="resultPositionRatio">-</span>
+                                </div>
+                                <div>
+                                    <strong>手续费:</strong> <span id="resultCommission">-</span>
+                                </div>
+                                <div>
+                                    <strong>滑点:</strong> <span id="resultSlippage">-</span>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="stat-grid">
@@ -669,6 +837,180 @@
     </div>
 
     <script>
+        // ============ 交易配置管理对象 ============
+        const TradingSettingsManager = {
+            // 初始化
+            init: function() {
+                this.attachEventListeners();
+                this.loadSettings();
+            },
+
+            // 绑定事件监听器
+            attachEventListeners: function() {
+                // 交易占比下拉框变化
+                document.getElementById('positionRatioSelect').addEventListener('change', (e) => {
+                    const customInput = document.getElementById('positionRatioCustom');
+                    if (e.target.value === 'custom') {
+                        customInput.style.display = 'block';
+                    } else {
+                        customInput.style.display = 'none';
+                    }
+                    this.updatePreview();
+                });
+
+                // 所有数字输入框实时更新预览
+                document.getElementById('initialCapital').addEventListener('input', () => this.updatePreview());
+                document.getElementById('positionRatioCustom').addEventListener('input', () => this.updatePreview());
+                document.getElementById('commissionRate').addEventListener('input', () => this.updatePreview());
+                document.getElementById('slippage').addEventListener('input', () => this.updatePreview());
+
+                // 保存配置按钮
+                document.getElementById('saveSettingsBtn').addEventListener('click', () => this.saveSettings());
+            },
+
+            // 从服务器加载配置
+            loadSettings: async function() {
+                try {
+                    const response = await fetch('/api/backtest/settings');
+                    const result = await response.json();
+
+                    if (result.success) {
+                        const settings = result.settings;
+                        document.getElementById('initialCapital').value = settings.initial_capital || 100000;
+                        document.getElementById('commissionRate').value = (settings.commission_rate * 100).toFixed(2);
+                        document.getElementById('slippage').value = (settings.slippage * 100).toFixed(2);
+
+                        // 设置交易占比（先转换成百分比）
+                        const ratio = settings.position_ratio || 0.2;
+                        const presets = [0.333, 0.2, 0.1];
+                        const select = document.getElementById('positionRatioSelect');
+
+                        if (presets.includes(ratio)) {
+                            select.value = ratio.toString();
+                        } else {
+                            select.value = 'custom';
+                            document.getElementById('positionRatioCustom').style.display = 'block';
+                            document.getElementById('positionRatioCustom').value = ratio.toFixed(2);
+                        }
+
+                        this.updatePreview();
+                    }
+                } catch (error) {
+                    console.error('加载配置失败:', error);
+                }
+            },
+
+            // 获取表单值
+            getFormValues: function() {
+                const initialCapital = parseInt(document.getElementById('initialCapital').value) || 100000;
+
+                // 获取交易占比
+                const select = document.getElementById('positionRatioSelect').value;
+                const positionRatio = select === 'custom'
+                    ? parseFloat(document.getElementById('positionRatioCustom').value) || 0.2
+                    : parseFloat(select);
+
+                const commissionRate = parseFloat(document.getElementById('commissionRate').value) / 100 || 0.001;
+                const slippage = parseFloat(document.getElementById('slippage').value) / 100 || 0;
+
+                return {
+                    initialCapital,
+                    positionRatio,
+                    commissionRate,
+                    slippage
+                };
+            },
+
+            // 验证参数
+            validate: function() {
+                const { initialCapital, positionRatio, commissionRate, slippage } = this.getFormValues();
+
+                // 验证初始资金
+                if (initialCapital < 10000 || initialCapital > 10000000) {
+                    return { valid: false, error: '初始资金必须在 10,000 ~ 10,000,000 之间' };
+                }
+
+                // 验证交易占比
+                if (positionRatio <= 0 || positionRatio >= 1) {
+                    return { valid: false, error: '交易占比必须在 1% ~ 99% 之间' };
+                }
+
+                // 验证手续费
+                if (commissionRate < 0 || commissionRate > 1) {
+                    return { valid: false, error: '手续费必须在 0% ~ 100% 之间' };
+                }
+
+                // 验证滑点
+                if (slippage < 0 || slippage > 0.05) {
+                    return { valid: false, error: '滑点必须在 0% ~ 5% 之间' };
+                }
+
+                return { valid: true };
+            },
+
+            // 更新预览
+            updatePreview: function() {
+                const { initialCapital, positionRatio, commissionRate, slippage } = this.getFormValues();
+
+                // 格式化数字
+                const formatCurrency = (num) => {
+                    return '¥' + num.toLocaleString('zh-CN', {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 0
+                    });
+                };
+
+                // 更新预览
+                document.getElementById('previewCapital').textContent = formatCurrency(initialCapital);
+                document.getElementById('previewTradeAmount').textContent = formatCurrency(Math.floor(initialCapital * positionRatio));
+                document.getElementById('previewCommission').textContent = (commissionRate * 100).toFixed(2) + '%';
+                document.getElementById('previewSlippage').textContent = (slippage * 100).toFixed(2) + '%';
+            },
+
+            // 保存配置到服务器
+            saveSettings: async function() {
+                // 验证
+                const validation = this.validate();
+                if (!validation.valid) {
+                    showMessage('settingsMessage', validation.error, 'error');
+                    return;
+                }
+
+                const { initialCapital, positionRatio, commissionRate, slippage } = this.getFormValues();
+
+                try {
+                    const response = await fetch('/api/backtest/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            initial_capital: initialCapital,
+                            position_ratio: positionRatio,
+                            commission_rate: commissionRate,
+                            slippage: slippage
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        showMessage('settingsMessage', '✓ 配置已保存', 'success');
+                        // 自动隐藏成功提示
+                        setTimeout(() => {
+                            const msg = document.getElementById('settingsMessage').nextElementSibling;
+                            if (msg && msg.classList.contains('success')) {
+                                msg.remove();
+                            }
+                        }, 3000);
+                    } else {
+                        showMessage('settingsMessage', '✗ ' + (result.error || '保存失败'), 'error');
+                    }
+                } catch (error) {
+                    console.error('保存配置失败:', error);
+                    showMessage('settingsMessage', '✗ 网络错误: ' + error.message, 'error');
+                }
+            }
+        };
+
         // 全局变量：缓存数据
         let cachedStocksData = {
             total: 0,
@@ -927,11 +1269,20 @@
                 showMessage('backtestMessage',
                     `开始回测 ${symbols.length} 只股票，请稍候...`, 'warning');
 
-                // 调用现有的回测API
+                // 获取交易配置参数
+                const tradingSettings = TradingSettingsManager.getFormValues();
+
+                // 调用回测API，包含交易配置参数
                 const response = await fetch('/api/backtest/cache', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({symbols: symbols})
+                    body: JSON.stringify({
+                        symbols: symbols,
+                        initial_capital: tradingSettings.initialCapital,
+                        position_ratio: tradingSettings.positionRatio,
+                        commission_rate: tradingSettings.commissionRate,
+                        slippage: tradingSettings.slippage
+                    })
                 });
 
                 const result = await response.json();
@@ -963,6 +1314,17 @@
             if (result.strategy_name) {
                 document.getElementById('resultStrategyName').textContent = result.strategy_name;
             }
+
+            // 显示交易配置信息
+            const tradingSettings = TradingSettingsManager.getFormValues();
+            document.getElementById('resultInitialCapital').textContent =
+                '¥' + tradingSettings.initialCapital.toLocaleString('zh-CN');
+            document.getElementById('resultPositionRatio').textContent =
+                (tradingSettings.positionRatio * 100).toFixed(1) + '%';
+            document.getElementById('resultCommission').textContent =
+                (tradingSettings.commissionRate * 100).toFixed(2) + '%';
+            document.getElementById('resultSlippage').textContent =
+                (tradingSettings.slippage * 100).toFixed(2) + '%';
 
             document.getElementById('resultTrades').textContent = result.total_trades;
 
@@ -1143,6 +1505,8 @@
             // 初始化回测数据选择功能
             await loadCachedStocks();
             setupBacktestModeSwitch();
+            // 初始化交易配置管理
+            TradingSettingsManager.init();
         });
     </script>
 </body>
