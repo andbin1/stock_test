@@ -1,7 +1,7 @@
 """参数配置管理模块 - 支持动态修改策略参数"""
 import json
 from pathlib import Path
-from config import STRATEGY_PARAMS, START_DATE, END_DATE, STRATEGY_MAP, DEFAULT_STRATEGY
+from config import STRATEGY_PARAMS, START_DATE, END_DATE, STRATEGY_MAP, DEFAULT_STRATEGY, get_default_trading_settings
 
 CONFIG_FILE = Path("./strategy_config.json")
 
@@ -12,6 +12,7 @@ class ConfigManager:
         self.config_file = CONFIG_FILE
         self.default_params = STRATEGY_PARAMS.copy()
         self.current_strategy = DEFAULT_STRATEGY
+        self.trading_settings = get_default_trading_settings()
         self.load_or_init()
 
     def load_or_init(self):
@@ -24,15 +25,23 @@ class ConfigManager:
                     if isinstance(config_data, dict) and 'current_strategy' in config_data:
                         self.current_strategy = config_data.get('current_strategy', DEFAULT_STRATEGY)
                         self.current_params = config_data.get('params', self.default_params.copy())
+                        # 读取交易设置（新增）
+                        if 'trading_settings' in config_data:
+                            self.trading_settings = config_data.get('trading_settings', get_default_trading_settings())
+                        else:
+                            self.trading_settings = get_default_trading_settings()
                     else:
                         # 旧格式，直接是参数字典
                         self.current_params = config_data
+                        self.trading_settings = get_default_trading_settings()
             except Exception as e:
                 print(f"读取配置文件失败: {e}，使用默认参数")
                 self.current_params = self.default_params.copy()
+                self.trading_settings = get_default_trading_settings()
                 self.save()
         else:
             self.current_params = self.default_params.copy()
+            self.trading_settings = get_default_trading_settings()
             self.save()
 
     def save(self):
@@ -40,6 +49,7 @@ class ConfigManager:
         try:
             config_data = {
                 'current_strategy': self.current_strategy,
+                'trading_settings': self.trading_settings,
                 'params': self.current_params
             }
             with open(self.config_file, 'w', encoding='utf-8') as f:
@@ -273,6 +283,34 @@ class ConfigManager:
 
         return STRATEGY_MAP[strategy_key]['params'].copy()
 
+    def get_trading_settings(self) -> dict:
+        """获取交易设置"""
+        return self.trading_settings.copy()
+
+    def update_trading_settings(self, new_settings: dict) -> bool:
+        """更新交易设置
+
+        Args:
+            new_settings: 新的交易设置字典
+
+        Returns:
+            成功: bool
+        """
+        # 验证参数
+        from config import validate_trading_settings
+        is_valid, error_msg = validate_trading_settings(new_settings)
+        if not is_valid:
+            print(f"交易设置验证失败: {error_msg}")
+            return False
+
+        # 只更新非None的字段
+        for key, value in new_settings.items():
+            if value is not None and key in self.trading_settings:
+                self.trading_settings[key] = value
+
+        # 保存到文件
+        return self.save()
+
     def get_config_info(self) -> dict:
         """获取完整配置信息（用于前端）"""
         return {
@@ -283,6 +321,7 @@ class ConfigManager:
             'ranges': self.get_param_ranges(),
             'descriptions': self.get_param_descriptions(),
             'presets': self.get_all_presets(),
+            'trading_settings': self.get_trading_settings(),
             'config_file': str(self.config_file)
         }
 

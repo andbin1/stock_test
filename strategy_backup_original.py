@@ -1,4 +1,4 @@
-"""修复的交易策略模块 - 解决同一天买卖的bug"""
+"""交易策略模块 - 实现用户指定的策略"""
 import pandas as pd
 import numpy as np
 from indicators import add_all_indicators, calculate_rsi, calculate_kdj
@@ -6,30 +6,25 @@ from indicators import add_all_indicators, calculate_rsi, calculate_kdj
 
 class VolumeBreakoutStrategy:
     """
-    修复版本的量能突破回踩策略
-
-    关键改进（vs 原始版本）：
-    1. ✅ 使用正确的持股天数计数（基于交易日计数器，而不是行索引）
-    2. ✅ 防止同一天的连续买卖虚假交易
-    3. ✅ 正确处理持仓状态管理
-
-    Bug修复详情：
-    - 原始版本：使用 df.loc[i + hold_days] 索引方式，在连续买入信号时产生虚假交易
-    - 修复版本：使用 hold_counter 精确计数持股天数，避免同一天买卖
-    - 影响：hold_days=1时虚假交易-3笔，hold_days=3时虚假交易-1笔
+    策略逻辑：
+    1. 30日均线向上（MA30 > MA30前一天）
+    2. 量能放大（最近3个交易日总成交量 > 3个交易日前的平均成交量 * 倍数）
+    3. 上一交易日成交金额在配置区间内
+    4. 股价回踩5日线（收盘价 < MA5）
+    5. 3个交易日后卖出
     """
 
     def __init__(self, params: dict):
         self.ma_period = params.get("ma_period", 30)
-        self.recent_days = params.get("recent_days", 5)
+        self.recent_days = params.get("recent_days", 5)  # 用于参考，不直接用于量能计算
         self.retest_period = params.get("retest_period", 5)
         self.hold_days = params.get("hold_days", 3)
         self.volume_multiplier = params.get("volume_multiplier", 2.0)
-        self.volume_window = 3
+        self.volume_window = 3  # 最近3个交易日的总成交量
 
         # 成交金额因子（单位：亿元）
-        self.turnover_min = params.get("turnover_min", 5.0)
-        self.turnover_max = params.get("turnover_max", 100.0)
+        self.turnover_min = params.get("turnover_min", 5.0)  # 最小成交金额（亿）
+        self.turnover_max = params.get("turnover_max", 100.0)  # 最大成交金额（亿）
 
     def calculate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """计算交易信号"""
@@ -40,84 +35,76 @@ class VolumeBreakoutStrategy:
         df['MA30'] = df['收盘'].rolling(window=self.ma_period).mean()
 
         # 2. 计算量能指标
+        # 最近3个交易日的总成交量
         df['Recent3_Vol_Sum'] = df['成交量'].rolling(window=self.volume_window).sum()
+        # 3个交易日前往前20日的平均成交量（作为基准）
         df['BaseVol_MA'] = df['成交量'].rolling(window=20).mean()
 
         # 3. 检查MA30向上趋势
         df['MA30_Up'] = df['MA30'] > df['MA30'].shift(1)
 
-        # 4. 检查量能放大条件
+        # 4. 检查量能放大条件：最近3日总成交量 > 3日前平均成交量 * 倍数
         df['Volume_Surge'] = df['Recent3_Vol_Sum'] > (df['BaseVol_MA'] * self.volume_multiplier)
 
-        # 5. 检查成交金额条件
+        # 5. 检查上一交易日成交金额（单位：亿）
+        # 成交额已经在单位元，需要转换为亿（1亿 = 1e8）
         df['Turnover_Yi'] = df['成交额'] / 1e8
         df['Prev_Turnover_Yi'] = df['Turnover_Yi'].shift(1)
         df['Turnover_Check'] = (df['Prev_Turnover_Yi'] >= self.turnover_min) & (df['Prev_Turnover_Yi'] <= self.turnover_max)
 
-        # 6. 检查5日线回踩
+        # 6. 检查5日线回踩：收盘价 < MA5，且收盘价 > MA5 * 0.95（不能跌太深）
         df['MA5_Retest'] = (df['收盘'] < df['MA5']) & (df['收盘'] > df['MA5'] * 0.95)
 
-        # 7. 综合买入信号
+        # 7. 综合买入信号：四个条件同时满足
         df['Buy_Signal'] = df['MA30_Up'] & df['Volume_Surge'] & df['Turnover_Check'] & df['MA5_Retest']
+
+        # 标记买入后的卖出日期（3个交易日后）
+        df['Sell_Signal'] = False
+        for i in range(len(df)):
+            if df.loc[i, 'Buy_Signal']:
+                if i + self.hold_days < len(df):
+                    df.loc[i + self.hold_days, 'Sell_Signal'] = True
 
         return df
 
     def get_trades(self, df: pd.DataFrame) -> list:
-        """
-        提取买卖点 - 修复版本
-
-        关键改进：
-        - 使用hold_counter追踪持股天数
-        - 在第hold_days个交易日后卖出
-        - 避免同一天连续买卖
-        """
+        """提取买卖点"""
         df_signals = self.calculate_signals(df)
         trades = []
 
         buy_date = None
         buy_price = None
         buy_idx = None
-        hold_counter = 0
 
-        for i in range(len(df_signals)):
-            row = df_signals.iloc[i]
+        for i, row in df_signals.iterrows():
+            if row['Buy_Signal'] and buy_date is None:
+                buy_date = row['日期']
+                buy_price = row['收盘']
+                buy_idx = i
 
-            # 如果当前持仓，增加计数器
-            if buy_date is not None:
-                hold_counter += 1
-
-            # 卖出条件1：达到持股天数
-            if buy_date is not None and hold_counter >= self.hold_days:
+            if row['Sell_Signal'] and buy_date is not None:
                 sell_date = row['日期']
                 sell_price = row['收盘']
 
+                # 计算收益
                 profit_pct = (sell_price - buy_price) / buy_price * 100
-                profit_pct_after_fee = profit_pct - 0.1
+                profit_pct_after_fee = profit_pct - 0.1  # 手续费往返0.1%
 
                 trades.append({
                     '买入日期': buy_date,
                     '买入价': buy_price,
                     '卖出日期': sell_date,
                     '卖出价': sell_price,
-                    '持有天数': hold_counter,
+                    '持有天数': self.hold_days,
                     '收益率%': profit_pct_after_fee,
                     '状态': '平仓',
                 })
 
-                # 重置持仓
                 buy_date = None
                 buy_price = None
                 buy_idx = None
-                hold_counter = 0
 
-            # 买入条件：没有持仓且有买入信号
-            if row['Buy_Signal'] and buy_date is None:
-                buy_date = row['日期']
-                buy_price = row['收盘']
-                buy_idx = i
-                hold_counter = 0
-
-        # 处理未平仓头寸
+        # 处理未平仓的头寸（用最后一日价格）
         if buy_date is not None:
             last_price = df_signals.iloc[-1]['收盘']
             profit_pct = (last_price - buy_price) / buy_price * 100
@@ -128,7 +115,7 @@ class VolumeBreakoutStrategy:
                 '买入价': buy_price,
                 '卖出日期': df_signals.iloc[-1]['日期'],
                 '卖出价': last_price,
-                '持有天数': hold_counter,
+                '持有天数': len(df_signals) - buy_idx - 1,
                 '收益率%': profit_pct_after_fee,
                 '状态': '未平仓',
             })
@@ -137,7 +124,11 @@ class VolumeBreakoutStrategy:
 
 
 class SteadyTrendStrategy:
-    """稳健型趋势跟踪策略 - 保持原有逻辑"""
+    """
+    稳健型趋势跟踪策略
+    适合：主板蓝筹股（沪深300成分股）
+    特点：低频交易、趋势跟随、严格风控
+    """
 
     def __init__(self, params: dict):
         # 均线参数
@@ -256,7 +247,11 @@ class SteadyTrendStrategy:
 
 
 class AggressiveMomentumStrategy:
-    """激进型突破动量策略 - 保持原有逻辑"""
+    """
+    激进型突破动量策略
+    适合：创业板、科创板高成长股
+    特点：高频交易、快进快出、动量驱动
+    """
 
     def __init__(self, params: dict):
         # 突破参数
@@ -387,26 +382,41 @@ class AggressiveMomentumStrategy:
 
 
 class BalancedMultiFactorStrategy:
-    """平衡型多因子策略 - 保持原有逻辑（代码略）"""
+    """
+    平衡型多因子策略
+    适合：中证500成分股、震荡市场
+    特点：多因子评分、分批建仓、智能止盈
+    """
 
     def __init__(self, params: dict):
+        # 布林带参数
         self.boll_period = params.get("boll_period", 20)
         self.boll_std = params.get("boll_std", 2.0)
+
+        # RSI参数
         self.rsi_period = params.get("rsi_period", 14)
         self.rsi_oversold = params.get("rsi_oversold", 30)
         self.rsi_overbought = params.get("rsi_overbought", 70)
+
+        # MACD参数
         self.macd_fast = params.get("macd_fast", 12)
         self.macd_slow = params.get("macd_slow", 26)
         self.macd_signal = params.get("macd_signal", 9)
+
+        # 止损止盈
         self.stop_loss = params.get("stop_loss", 0.10)
         self.take_profit_1 = params.get("take_profit_1", 0.05)
         self.take_profit_2 = params.get("take_profit_2", 0.10)
         self.take_profit_final = params.get("take_profit_final", 0.15)
+
+        # 因子权重
         self.factor_weight_boll = params.get("factor_weight_boll", 0.20)
         self.factor_weight_rsi = params.get("factor_weight_rsi", 0.25)
         self.factor_weight_macd = params.get("factor_weight_macd", 0.20)
         self.factor_weight_volume = params.get("factor_weight_volume", 0.15)
         self.factor_weight_price = params.get("factor_weight_price", 0.20)
+
+        # 仓位管理
         self.position_size = params.get("position_size", 0.20)
         self.min_factor_score = params.get("min_factor_score", 0.6)
 
@@ -415,6 +425,7 @@ class BalancedMultiFactorStrategy:
         row = df.iloc[idx]
         scores = {}
 
+        # 因子1：布林带位置
         if 'BOLL_UPPER' in df.columns and 'BOLL_LOWER' in df.columns:
             boll_range = row['BOLL_UPPER'] - row['BOLL_LOWER']
             if boll_range > 0:
@@ -425,6 +436,7 @@ class BalancedMultiFactorStrategy:
         else:
             scores['boll'] = 0
 
+        # 因子2：RSI超卖
         rsi_col = f'RSI_{self.rsi_period}'
         if rsi_col in df.columns:
             if row[rsi_col] < self.rsi_oversold:
@@ -435,6 +447,7 @@ class BalancedMultiFactorStrategy:
         else:
             scores['rsi'] = 0
 
+        # 因子3：MACD趋势
         if 'MACD_HIST' in df.columns:
             macd_positive = 1 if row['MACD_HIST'] > 0 else 0
             macd_increasing = 1 if idx > 0 and row['MACD_HIST'] > df.iloc[idx-1]['MACD_HIST'] else 0
@@ -442,6 +455,7 @@ class BalancedMultiFactorStrategy:
         else:
             scores['macd'] = 0
 
+        # 因子4：量能健康度
         if idx >= 20 and 'VOLUME_MA20' in df.columns:
             volume_ma20 = df['成交量'].iloc[idx-20:idx].mean()
             volume_ratio = row['成交量'] / volume_ma20 if volume_ma20 > 0 else 0
@@ -452,6 +466,7 @@ class BalancedMultiFactorStrategy:
         else:
             scores['volume'] = 0
 
+        # 因子5：价格位置
         if idx >= 20:
             low_20 = df['低'].iloc[idx-20:idx].min()
             high_20 = df['高'].iloc[idx-20:idx].max()
@@ -477,11 +492,13 @@ class BalancedMultiFactorStrategy:
             'atr': False,
         })
 
+        # 计算每行的因子评分
         df['Factor_Score'] = 0.0
         for i in range(len(df)):
             if i >= 20:
                 df.loc[df.index[i], 'Factor_Score'] = self.calculate_factor_score(df, i)
 
+        # 买入条件
         high_score = df['Factor_Score'] > self.min_factor_score
         near_lower = df['收盘'] < df['BOLL_LOWER'] * 1.02
         rsi_low = df[f'RSI_{self.rsi_period}'] < 40
@@ -489,6 +506,7 @@ class BalancedMultiFactorStrategy:
 
         df['Buy_Signal'] = high_score & near_lower & rsi_low & macd_positive
 
+        # 卖出条件
         near_upper = df['收盘'] > df['BOLL_UPPER'] * 0.98
         rsi_high = df[f'RSI_{self.rsi_period}'] > self.rsi_overbought
         df['Sell_Signal'] = near_upper | rsi_high
@@ -522,9 +540,11 @@ class BalancedMultiFactorStrategy:
 
                 sell_reason = None
 
+                # 止损
                 if profit_pct <= -self.stop_loss:
                     sell_reason = '止损'
 
+                # 分批止盈
                 elif profit_pct >= self.take_profit_final:
                     sell_reason = '最终止盈'
 
@@ -534,6 +554,7 @@ class BalancedMultiFactorStrategy:
                 elif profit_pct >= self.take_profit_1:
                     sell_reason = '第一批止盈'
 
+                # 技术信号卖出
                 elif row['Sell_Signal']:
                     sell_reason = '技术信号'
 
@@ -557,6 +578,7 @@ class BalancedMultiFactorStrategy:
 
 
 if __name__ == "__main__":
+    # 测试策略
     from config import STRATEGY_PARAMS
     from data_fetcher import get_stock_data
 
@@ -565,6 +587,11 @@ if __name__ == "__main__":
         strategy = VolumeBreakoutStrategy(STRATEGY_PARAMS)
         signals = strategy.calculate_signals(df)
         trades = strategy.get_trades(df)
+
+        print("\n=== 信号检验 ===")
+        print(signals[signals['Buy_Signal'] | signals['Sell_Signal']][
+            ['日期', '收盘', 'MA5', 'MA30', 'MA30_Up', 'Volume_Surge', 'MA5_Retest', 'Buy_Signal', 'Sell_Signal']
+        ])
 
         print("\n=== 交易记录 ===")
         trades_df = pd.DataFrame(trades)

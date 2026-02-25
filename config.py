@@ -263,3 +263,94 @@ COMMISSION_RATE = 0.00025  # 手续费率 万2.5 (买卖双向)
 STAMP_TAX = 0.001          # 印花税 千1 (仅卖出)
 SLIPPAGE = 0.001           # 滑点 0.1%
 TRADING_FEE_MIN = 5        # 最低手续费 5元（单边）
+
+# 交易设置参数（新增）- 用于前端配置和回测引擎
+INITIAL_CAPITAL_DEFAULT = 100000      # 初始资金10万元
+INITIAL_CAPITAL_MIN = 10000           # 最低10万元
+INITIAL_CAPITAL_MAX = 10000000        # 最高1000万元
+
+POSITION_RATIO_DEFAULT = 0.2          # 单笔占比1/5
+POSITION_RATIO_MIN = 0.01             # 最低1%
+POSITION_RATIO_MAX = 0.99             # 最高99%
+
+COMMISSION_RATE_DEFAULT = 0.001       # 手续费0.1%（万1）
+COMMISSION_RATE_MIN = 0               # 最低无手续费
+COMMISSION_RATE_MAX = 0.05            # 最高5%手续费
+
+SLIPPAGE_DEFAULT = 0.0                # 滑点0%
+SLIPPAGE_MIN = 0                      # 最低0%
+SLIPPAGE_MAX = 0.05                   # 最高5%滑点
+
+
+def validate_trading_settings(settings: dict) -> tuple:
+    """验证交易设置参数的有效性
+
+    Args:
+        settings: {'initial_capital': float, 'position_ratio': float, 'commission_rate': float, 'slippage': float}
+
+    Returns:
+        (is_valid: bool, error_message: str)
+    """
+    # 验证初始金额
+    if 'initial_capital' in settings:
+        ic = settings['initial_capital']
+        if not (INITIAL_CAPITAL_MIN <= ic <= INITIAL_CAPITAL_MAX):
+            return False, f"初始金额必须在 {INITIAL_CAPITAL_MIN} 到 {INITIAL_CAPITAL_MAX} 之间"
+
+    # 验证交易占比
+    if 'position_ratio' in settings:
+        pr = settings['position_ratio']
+        if not (POSITION_RATIO_MIN <= pr <= POSITION_RATIO_MAX):
+            return False, f"交易占比必须在 {POSITION_RATIO_MIN} 到 {POSITION_RATIO_MAX} 之间"
+
+    # 验证手续费
+    if 'commission_rate' in settings:
+        cr = settings['commission_rate']
+        if not (COMMISSION_RATE_MIN <= cr <= COMMISSION_RATE_MAX):
+            return False, f"手续费必须在 {COMMISSION_RATE_MIN} 到 {COMMISSION_RATE_MAX} 之间"
+
+    # 验证滑点
+    if 'slippage' in settings:
+        sp = settings['slippage']
+        if not (SLIPPAGE_MIN <= sp <= SLIPPAGE_MAX):
+            return False, f"滑点必须在 {SLIPPAGE_MIN} 到 {SLIPPAGE_MAX} 之间"
+
+    return True, ""
+
+
+def get_default_trading_settings() -> dict:
+    """获取默认交易设置"""
+    return {
+        'initial_capital': INITIAL_CAPITAL_DEFAULT,
+        'position_ratio': POSITION_RATIO_DEFAULT,
+        'commission_rate': COMMISSION_RATE_DEFAULT,
+        'slippage': SLIPPAGE_DEFAULT,
+    }
+
+
+# ============================================
+# 🔄 回测时间配置 (v2 专业版 - 新增)
+# ============================================
+
+# 数据获取范围（用于下载历史数据和预热）
+DATA_FETCH_START = "2024-01-01"       # 数据下载开始
+DATA_FETCH_END = "2025-02-24"         # 数据下载结束
+
+# 回测期范围（独立设置，真正的回测时间段）
+BACKTEST_START = "2024-06-01"         # ⭐ 回测开始日期
+BACKTEST_END = "2025-01-31"           # ⭐ 回测结束日期
+
+# 样本外测试范围（可选，用于验证策略稳定性）
+OOS_START = "2025-02-01"              # OOS期开始
+OOS_END = "2025-02-24"                # OOS期结束
+
+# 最大仓位限制（风险管理）
+MAX_POSITION_RATIO = 0.80             # 最大总仓位 80%（保留20%现金）
+
+# 成本结构配置
+TRADING_COST_CONFIG = {
+    'commission_rate': 0.0001,         # 手续费 0.01%
+    'include_stamp_duty': True,        # 包含印花税 (卖出0.1%)
+    'stamp_duty_rate': 0.001,          # 印花税比例
+    'transfer_fee_rate': 0.000001      # 过户费
+}

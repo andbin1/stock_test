@@ -21,7 +21,7 @@ except ImportError:
     GridTradingStrategy = None
     TurtleTradingStrategy = None
 from export_to_excel import export_detailed_trades_to_excel, export_batch_results_to_excel
-from backtest_engine import BacktestEngine
+from backtest_engine_enhanced import EnhancedBacktestEngine, BacktestTimeConfig
 from data_manager import DataManager
 from data_fetcher import get_index_constituents
 from config_manager import ConfigManager
@@ -444,34 +444,101 @@ def run_backtest_with_cache():
                 'error': '没有可用的缓存数据，请先获取数据'
             }), 400
 
-        # 运行回测
-        engine = BacktestEngine()
-        results = engine.run_multiple_stocks(all_data, strategy)
-        aggregated = BacktestEngine.aggregate_results(results)
+        # 获取交易设置
+        trading_settings = config_manager.get_trading_settings()
 
-        # 收集所有交易
+        # 运行回测 - 使用增强版引擎
+        from config import DATA_FETCH_START, DATA_FETCH_END, BACKTEST_START, BACKTEST_END, MAX_POSITION_RATIO
+
+        time_config = BacktestTimeConfig(
+            data_start=DATA_FETCH_START,
+            data_end=DATA_FETCH_END,
+            backtest_start=BACKTEST_START,
+            backtest_end=BACKTEST_END
+        )
+
+        engine = EnhancedBacktestEngine(
+            initial_capital=trading_settings['initial_capital'],
+            position_ratio=trading_settings['position_ratio'],
+            commission_rate=trading_settings['commission_rate'],
+            slippage=trading_settings['slippage'],
+            time_config=time_config,
+            max_position_ratio=MAX_POSITION_RATIO
+        )
+        results = engine.run_multiple_stocks_with_portfolio(all_data, strategy)
+
+        # 提取投资组合总结
+        portfolio_summary = results.get('portfolio_summary', {})
+        stock_results = results.get('stock_results', {})
+        trade_history = results.get('trade_history', [])
+        initial_capital = portfolio_summary.get('initial_capital', 100000)
+
+        # 从 trade_history 中提取每笔卖出交易的收益
         all_trades = []
-        for symbol, result in results.items():
-            for trade in result['trades']:
-                all_trades.append({
-                    'symbol': symbol,
-                    'buy_date': str(trade['买入日期'].date()) if hasattr(trade['买入日期'], 'date') else str(trade['买入日期']),
-                    'buy_price': round(trade['买入价'], 2),
-                    'sell_date': str(trade['卖出日期'].date()) if hasattr(trade['卖出日期'], 'date') else str(trade['卖出日期']),
-                    'sell_price': round(trade['卖出价'], 2),
-                    'return': round(trade['收益率%'], 2),
-                    'status': trade['状态']
-                })
+        wins = 0
+        prev_sell_cash = initial_capital
+
+        for i, trade_record in enumerate(trade_history):
+            if trade_record.get('action') == 'SELL':
+                # 找配对的买入交易
+                buy_index = i - 1
+                while buy_index >= 0 and trade_record.get('symbol') != trade_history[buy_index].get('symbol'):
+                    buy_index -= 1
+
+                if buy_index >= 0:
+                    buy_trade = trade_history[buy_index]
+                    sell_trade = trade_record
+
+                    # 从策略中获取更多信息
+                    stock_trades = stock_results.get(trade_record.get('symbol'), {}).get('trades', [])
+                    matching_trade = None
+                    for st in stock_trades:
+                        if (str(st.get('买入日期')).split()[0] == str(buy_trade['date']).split()[0] and
+                            str(st.get('卖出日期')).split()[0] == str(sell_trade['date']).split()[0]):
+                            matching_trade = st
+                            break
+
+                    # 计算这笔交易的收益贡献（相对于初始资金）
+                    cash_after_sell = sell_trade.get('cash_after', 0)
+                    trade_contribution = (cash_after_sell - prev_sell_cash) / initial_capital * 100
+
+                    all_trades.append({
+                        'symbol': trade_record.get('symbol'),
+                        'buy_date': str(buy_trade['date']).split()[0],
+                        'buy_price': round(buy_trade['price'], 2),
+                        'sell_date': str(sell_trade['date']).split()[0],
+                        'sell_price': round(sell_trade['price'], 2),
+                        'return': round(trade_contribution, 4),  # 这笔交易的收益贡献
+                        'status': matching_trade.get('状态', '平仓') if matching_trade else '平仓'
+                    })
+
+                    if trade_contribution > 0:
+                        wins += 1
+
+                    prev_sell_cash = cash_after_sell
+
+        # 计算统计数据
+        total_trades_count = len(all_trades)
+        total_return_pct = portfolio_summary.get('total_return_pct', 0)
+
+        # 平均收益率 = 总收益率 ÷ 交易笔数 (保持一致性)
+        avg_return = total_return_pct / total_trades_count if total_trades_count > 0 else 0
+
+        # 胜率 = 盈利交易数 ÷ 总交易数
+        win_rate = (wins / total_trades_count * 100) if total_trades_count > 0 else 0
 
         return jsonify({
             'success': True,
             'strategy': strategy_key,
             'strategy_name': STRATEGY_MAP[strategy_key]['name'],
             'stocks_tested': len(all_data),
-            'total_trades': aggregated['total_trades'],
-            'total_return': round(aggregated['total_return'], 2),
-            'avg_return': round(aggregated['avg_return_per_trade'], 2),
-            'win_rate': round(aggregated['win_rate'], 1),
+            'portfolio_summary': portfolio_summary,
+            'total_trades': total_trades_count,
+            'total_return': round(total_return_pct, 2),
+            'avg_return': round(avg_return, 4),  # 保留4位小数，因为平均值很小
+            'win_rate': round(win_rate, 1),
+            'final_capital': round(portfolio_summary.get('final_total_value', 0), 2),
+            'rejected_trades': portfolio_summary.get('num_trades_rejected', 0),
             'trades': all_trades[:20]  # 返回前20笔
         })
 
@@ -703,9 +770,28 @@ def export_trades_to_excel():
                 'error': '没有可用的缓存数据'
             }), 400
 
-        # 运行回测
-        engine = BacktestEngine()
-        results = engine.run_multiple_stocks(all_data, strategy)
+        # 获取交易设置
+        trading_settings = config_manager.get_trading_settings()
+
+        # 运行回测 - 使用增强版引擎
+        from config import DATA_FETCH_START, DATA_FETCH_END, BACKTEST_START, BACKTEST_END, MAX_POSITION_RATIO
+
+        time_config = BacktestTimeConfig(
+            data_start=DATA_FETCH_START,
+            data_end=DATA_FETCH_END,
+            backtest_start=BACKTEST_START,
+            backtest_end=BACKTEST_END
+        )
+
+        engine = EnhancedBacktestEngine(
+            initial_capital=trading_settings['initial_capital'],
+            position_ratio=trading_settings['position_ratio'],
+            commission_rate=trading_settings['commission_rate'],
+            slippage=trading_settings['slippage'],
+            time_config=time_config,
+            max_position_ratio=MAX_POSITION_RATIO
+        )
+        results = engine.run_multiple_stocks_with_portfolio(all_data, strategy)
 
         # 生成Excel文件
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -727,6 +813,46 @@ def export_trades_to_excel():
         import traceback
         traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/backtest/settings', methods=['GET'])
+def get_backtest_settings():
+    """获取当前回测配置（初始资金、交易占比、手续费、滑点）"""
+    try:
+        settings = config_manager.get_trading_settings()
+        return jsonify({
+            'success': True,
+            'settings': settings
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/backtest/settings', methods=['POST'])
+def update_backtest_settings():
+    """更新回测配置"""
+    try:
+        data = request.json
+        new_settings = {
+            'initial_capital': data.get('initial_capital'),
+            'position_ratio': data.get('position_ratio'),
+            'commission_rate': data.get('commission_rate'),
+            'slippage': data.get('slippage'),
+        }
+
+        # 验证参数
+        from config import validate_trading_settings
+        is_valid, error_msg = validate_trading_settings(new_settings)
+        if not is_valid:
+            return jsonify({'success': False, 'error': error_msg}), 400
+
+        # 更新配置
+        config_manager.update_trading_settings(new_settings)
+        return jsonify({
+            'success': True,
+            'message': '配置已更新',
+            'settings': config_manager.get_trading_settings()
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():

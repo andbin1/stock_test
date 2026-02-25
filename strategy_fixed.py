@@ -4,19 +4,14 @@ import numpy as np
 from indicators import add_all_indicators, calculate_rsi, calculate_kdj
 
 
-class VolumeBreakoutStrategy:
+class VolumeBreakoutStrategyFixed:
     """
     修复版本的量能突破回踩策略
 
-    关键改进（vs 原始版本）：
-    1. ✅ 使用正确的持股天数计数（基于交易日计数器，而不是行索引）
-    2. ✅ 防止同一天的连续买卖虚假交易
-    3. ✅ 正确处理持仓状态管理
-
-    Bug修复详情：
-    - 原始版本：使用 df.loc[i + hold_days] 索引方式，在连续买入信号时产生虚假交易
-    - 修复版本：使用 hold_counter 精确计数持股天数，避免同一天买卖
-    - 影响：hold_days=1时虚假交易-3笔，hold_days=3时虚假交易-1笔
+    关键改进：
+    1. 使用正确的持股天数计数（基于交易日，而不是行索引）
+    2. 防止同一天的连续买卖
+    3. 正确处理持仓状态管理
     """
 
     def __init__(self, params: dict):
@@ -562,7 +557,7 @@ if __name__ == "__main__":
 
     df = get_stock_data("000001", "20240101", "20250213")
     if df is not None:
-        strategy = VolumeBreakoutStrategy(STRATEGY_PARAMS)
+        strategy = VolumeBreakoutStrategyFixed(STRATEGY_PARAMS)
         signals = strategy.calculate_signals(df)
         trades = strategy.get_trades(df)
 
