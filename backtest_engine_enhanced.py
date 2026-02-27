@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+from collections import defaultdict
+import bisect
 
 
 class PortfolioManager:
@@ -21,13 +23,16 @@ class PortfolioManager:
         self.initial_capital = initial_capital
         self.current_cash = initial_capital
         self.max_position_ratio = max_position_ratio
-        self.positions = {}  # {symbol: {'shares': 100, 'entry_price': 10, 'entry_cost': 1000, ...}}
+        self.positions = defaultdict(list)  # {symbol: [pos1, pos2, ...]}
         self.trade_history = []
         self.rejected_trades = []  # 被风险控制阻止的交易
 
     def get_total_position_value(self) -> float:
         """获取当前持仓总成本"""
-        total = sum(pos['entry_cost'] for pos in self.positions.values())
+        total = 0
+        for pos_list in self.positions.values():
+            for pos in pos_list:
+                total += pos['entry_cost']
         return total
 
     def get_position_ratio(self) -> float:
@@ -77,15 +82,16 @@ class PortfolioManager:
             })
             return False
 
-        self.positions[symbol] = {
+        self.positions[symbol].append({
             'shares': shares,
             'entry_price': entry_price,
             'entry_cost': total_cost,
             'buy_date': buy_date,
             'status': 'open'
-        }
+        })
         self.current_cash -= total_cost
 
+        open_lots = sum(len(v) for v in self.positions.values())
         self.trade_history.append({
             'date': buy_date,
             'symbol': symbol,
@@ -95,7 +101,8 @@ class PortfolioManager:
             'commission': entry_cost,
             'total_cost': total_cost,
             'cash_after': self.current_cash,
-            'position_ratio': self.get_position_ratio()
+            'position_ratio': self.get_position_ratio(),
+            'open_positions': open_lots,
         })
 
         return True
@@ -103,26 +110,26 @@ class PortfolioManager:
     def sell(self, symbol: str, shares: int, exit_price: float,
              exit_cost: float, sell_date: str) -> bool:
         """
-        卖出股票
+        卖出股票 - FIFO 出队
 
         Returns:
             成功返回True，失败返回False
         """
-        if symbol not in self.positions:
+        if not self.positions[symbol]:
             return False
 
-        position = self.positions[symbol]
+        position = self.positions[symbol].pop(0)  # FIFO: 弹出最早建仓的那笔
+        if not self.positions[symbol]:
+            del self.positions[symbol]  # 清理空列表，避免内存残留
+
         sell_income = shares * exit_price - exit_cost
+        entry_cost = position['entry_cost']
+        profit = sell_income - entry_cost
+        profit_pct = (profit / entry_cost) * 100 if entry_cost > 0 else 0
 
         self.current_cash += sell_income
 
-        # 计算收益
-        entry_cost = position['entry_cost']
-        profit = sell_income - (entry_cost * shares / position['shares'])
-        profit_pct = (profit / entry_cost) * 100 if entry_cost > 0 else 0
-
-        del self.positions[symbol]
-
+        open_lots = sum(len(v) for v in self.positions.values())
         self.trade_history.append({
             'date': sell_date,
             'symbol': symbol,
@@ -134,10 +141,20 @@ class PortfolioManager:
             'profit': profit,
             'profit_pct': profit_pct,
             'cash_after': self.current_cash,
-            'position_ratio': self.get_position_ratio()
+            'position_ratio': self.get_position_ratio(),
+            'open_positions': open_lots,
         })
 
         return True
+
+    def get_market_value(self, last_prices: dict) -> float:
+        """计算未平仓持仓的当前市值（按最新收盘价）"""
+        total = 0.0
+        for symbol, pos_list in self.positions.items():
+            last_price = last_prices.get(symbol, 0.0)
+            for pos in pos_list:
+                total += pos['shares'] * last_price
+        return total
 
     def get_report(self) -> dict:
         """获取投资组合最终报告"""
@@ -153,7 +170,7 @@ class PortfolioManager:
             'final_position_ratio': round(self.get_position_ratio() * 100, 2),
             'num_trades': len(self.trade_history),
             'num_rejected': len(self.rejected_trades),
-            'active_positions': list(self.positions.keys()),
+            'active_positions': [sym for sym, lst in self.positions.items() if lst],
             'trade_history': self.trade_history,
             'rejected_trades': self.rejected_trades
         }
@@ -250,13 +267,64 @@ class BacktestTimeConfig:
         }
 
 
+def _build_prev_day_turnover_ranks(all_data: dict) -> tuple:
+    """
+    为所有股票构建「前一交易日成交额横截面排名」查询表。
+
+    Returns:
+        (rank_map, sorted_dates)
+        rank_map: {date_str: {symbol: rank}}  —— rank=1 表示当日成交额最高
+        sorted_dates: 全局所有交易日列表（已排序），用于查找前一交易日
+    """
+    records = []
+    for symbol, df in all_data.items():
+        sub = df[['日期', '成交额']].copy()
+        sub.columns = ['date', 'turnover']
+        sub['symbol'] = symbol
+        records.append(sub)
+
+    if not records:
+        return {}, []
+
+    all_df = pd.concat(records, ignore_index=True)
+    all_df['date'] = pd.to_datetime(all_df['date']).dt.normalize()
+    all_df['turnover'] = pd.to_numeric(all_df['turnover'], errors='coerce').fillna(0)
+
+    # 每个交易日对所有股票按成交额降序排名（rank=1 为最高）
+    all_df['rank'] = all_df.groupby('date')['turnover'].rank(
+        ascending=False, method='min'
+    ).astype(int)
+
+    # 全局交易日列表（升序）
+    sorted_dates = sorted(all_df['date'].dt.strftime('%Y-%m-%d').unique().tolist())
+
+    # 构建快查字典
+    rank_map: dict = {}
+    for row in all_df.itertuples(index=False):
+        d = row.date.strftime('%Y-%m-%d')
+        if d not in rank_map:
+            rank_map[d] = {}
+        rank_map[d][row.symbol] = row.rank
+
+    return rank_map, sorted_dates
+
+
+def _get_prev_trading_day(buy_date_str: str, sorted_dates: list) -> str | None:
+    """返回 buy_date_str 在 sorted_dates 中的前一个交易日，找不到返回 None。"""
+    idx = bisect.bisect_left(sorted_dates, buy_date_str)
+    if idx > 0:
+        return sorted_dates[idx - 1]
+    return None
+
+
 class EnhancedBacktestEngine:
     """增强版回测引擎 - 支持时间范围和仓位管理"""
 
     def __init__(self, initial_capital: float = None, position_ratio: float = None,
                  commission_rate: float = None, slippage: float = None,
                  time_config: BacktestTimeConfig = None,
-                 max_position_ratio: float = 0.80):
+                 max_position_ratio: float = 0.80,
+                 turnover_rank_top_n: int = 0):
         """
         初始化增强版回测引擎
 
@@ -278,6 +346,7 @@ class EnhancedBacktestEngine:
         self.commission_rate = commission_rate or COMMISSION_RATE_DEFAULT
         self.slippage = slippage or SLIPPAGE_DEFAULT
         self.max_position_ratio = max_position_ratio
+        self.turnover_rank_top_n = int(turnover_rank_top_n or 0)
 
         # 时间配置
         self.time_config = time_config or BacktestTimeConfig()
@@ -436,6 +505,12 @@ class EnhancedBacktestEngine:
         results = {}
         stock_results = {}
 
+        # ── 成交额排名筛选：预构建前一交易日横截面排名表 ─────────────────────
+        rank_map: dict = {}
+        rank_sorted_dates: list = []
+        if self.turnover_rank_top_n > 0:
+            rank_map, rank_sorted_dates = _build_prev_day_turnover_ranks(all_data)
+
         for symbol, df in all_data.items():
             df_backtest = self.time_config.filter_data(df)
             if len(df_backtest) == 0:
@@ -446,6 +521,22 @@ class EnhancedBacktestEngine:
             for trade in trades:
                 # 处理买入
                 if '买入日期' in trade and '卖出日期' in trade:
+
+                    # ── 前一日成交额排名过滤 ──────────────────────────────────
+                    if self.turnover_rank_top_n > 0:
+                        buy_date_str = str(trade['买入日期'])[:10]
+                        prev_day = _get_prev_trading_day(buy_date_str, rank_sorted_dates)
+                        if prev_day:
+                            cur_rank = rank_map.get(prev_day, {}).get(symbol, 999999)
+                        else:
+                            cur_rank = 999999  # 无前一日数据，不能入场
+                        if cur_rank > self.turnover_rank_top_n:
+                            trade['portfolio_status'] = 'FILTERED_TURNOVER'
+                            trade['rejection_reason'] = (
+                                f"前日成交额排名第{cur_rank}，超出前{self.turnover_rank_top_n}名限制"
+                            )
+                            continue
+
                     buy_price_with_slip = self.apply_slippage_to_price(trade['买入价'], is_buy=True)
                     position_size = self.calculate_position_size(buy_price_with_slip)
                     buy_amount = buy_price_with_slip * position_size
@@ -467,8 +558,8 @@ class EnhancedBacktestEngine:
 
                     trade['portfolio_status'] = 'ACCEPTED'
 
-                    # 处理卖出
-                    if trade.get('状态') == '平仓':
+                    # 处理卖出（兼容所有策略的状态：'平仓'/'止盈'/'死叉'/'网格止盈'/'ATR止损' 等）
+                    if trade.get('状态') != '未平仓':
                         sell_price_with_slip = self.apply_slippage_to_price(trade['卖出价'], is_buy=False)
                         sell_amount = sell_price_with_slip * position_size
                         sell_cost = self.cost_calculator.calculate_sell_cost(sell_amount)
@@ -481,21 +572,34 @@ class EnhancedBacktestEngine:
                             sell_date=trade['卖出日期']
                         )
 
-            # 存储每只股票的结果
+            # 存储每只股票的结果（含末日收盘价，供 MTM 计算）
+            last_close = float(df_backtest.iloc[-1]['收盘']) if len(df_backtest) > 0 else 0.0
             stock_results[symbol] = {
                 'trades': trades,
-                'num_trades': len(trades)
+                'num_trades': len(trades),
+                'last_close': last_close,
             }
+
+        # 收集所有股票末日价格，用于未平仓持仓的按市价估值（mark-to-market）
+        last_prices = {sym: sr['last_close'] for sym, sr in stock_results.items()}
 
         # 生成投资组合总结
         pm_report = pm.get_report()
 
+        # 按市值计算最终总价值（未平仓用末日收盘价，而非成本价）
+        mtm_position_value = pm.get_market_value(last_prices)
+        mtm_final_value = pm_report['final_cash'] + mtm_position_value
+        mtm_total_return_pct = round(
+            (mtm_final_value - pm_report['initial_capital']) / pm_report['initial_capital'] * 100, 2
+        )
+
         results['portfolio_summary'] = {
             'initial_capital': pm_report['initial_capital'],
             'final_cash': pm_report['final_cash'],
-            'final_position_value': pm_report['final_position_value'],
-            'final_total_value': pm_report['final_total_value'],
-            'total_return_pct': pm_report['total_return_pct'],
+            'final_position_value': round(mtm_position_value, 2),   # 市值
+            'final_total_value': round(mtm_final_value, 2),          # 市值口径
+            'total_return_pct': mtm_total_return_pct,                # 市值口径总收益率
+            'total_return_pct_at_cost': pm_report['total_return_pct'],  # 成本口径（参考）
             'final_position_ratio': pm_report['final_position_ratio'],
             'num_trades_executed': pm_report['num_trades'],
             'num_trades_rejected': pm_report['num_rejected'],

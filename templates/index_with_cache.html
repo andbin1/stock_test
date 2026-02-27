@@ -533,6 +533,52 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* ── 历史记录卡片 ── */
+        .history-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            background: #fafafa;
+            position: relative;
+        }
+        .history-card:hover { background: #f5f5f5; }
+        .history-meta {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 6px;
+        }
+        .history-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .history-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            font-size: 12px;
+            color: #555;
+        }
+        .history-stat { white-space: nowrap; }
+        .history-stat .val { font-weight: bold; }
+        .history-stat .val.pos { color: #f44336; }
+        .history-stat .val.neg { color: #4caf50; }
+        .history-delete {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            background: none;
+            border: none;
+            color: #bbb;
+            font-size: 16px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 2px 6px;
+        }
+        .history-delete:hover { color: #f44336; }
     </style>
 </head>
 <body>
@@ -545,50 +591,23 @@
         <div class="content">
             <!-- 标签页切换 -->
             <div class="tab-buttons">
-                <button class="tab-button active" onclick="switchTab('data')">📊 数据管理</button>
-                <button class="tab-button" onclick="switchTab('backtest')">🔄 回测</button>
-                <button class="tab-button" onclick="switchTab('status')">ℹ️ 状态</button>
+                <button class="tab-button active" onclick="switchTab('backtest')">🔄 回测</button>
+                <button class="tab-button" onclick="switchTab('history'); loadHistory();">📋 历史记录</button>
                 <button class="tab-button" onclick="goToParameters()" style="margin-left: auto;">⚙️ 参数配置</button>
+                <button class="tab-button" id="updateAllBtn" onclick="triggerUpdateAll()"
+                        style="background:#e8f5e9; color:#2e7d32; border:1px solid #a5d6a7; margin-left:8px;">
+                    更新数据
+                </button>
+            </div>
+            <!-- 更新进度条 -->
+            <div id="updateAllBar" style="display:none; padding:8px 16px; background:#f1f8e9;
+                 border-bottom:1px solid #c8e6c9; font-size:13px; color:#33691e;">
+                <span id="updateAllMsg">正在更新...</span>
+                <span id="updateAllPct" style="float:right; font-weight:bold;"></span>
             </div>
 
-            <!-- 标签页1: 数据管理 -->
-            <div class="tab-content active" id="data">
-                <div class="section">
-                    <div class="section-title">📥 按板块获取数据</div>
-
-                    <div class="input-group">
-                        <label>选择板块</label>
-                        <select id="sectorSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-                            <option value="">-- 选择板块 --</option>
-                        </select>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                        <div class="input-group">
-                            <label>开始日期</label>
-                            <input type="date" id="startDate" value="2024-01-01" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-                        </div>
-                        <div class="input-group">
-                            <label>结束日期</label>
-                            <input type="date" id="endDate" value="2025-02-13" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
-                        </div>
-                    </div>
-
-                    <div class="info-box" style="background: #e8f5e9; border-left-color: #4caf50;">
-                        ✨ <strong>自动获取模式</strong><br>
-                        系统将自动获取该板块全部市场数据，不需要手动输入个数<br>
-                        <span style="font-size: 12px; color: #666;">
-                        沪深A股/深成指: ~100+只 | 创业板: ~80只 | 科创板: ~70只 | 中证500: ~60只
-                        </span>
-                    </div>
-
-                    <button class="btn-primary" style="width: 100%;" onclick="batchFetchBySector()">🚀 开始获取全部数据</button>
-                    <div id="batchSectorMessage"></div>
-                </div>
-            </div>
-
-            <!-- 标签页2: 回测 -->
-            <div class="tab-content" id="backtest">
+            <!-- 标签页1: 回测 -->
+            <div class="tab-content active" id="backtest">
                 <!-- 交易配置面板 -->
                 <div class="trading-settings-section">
                     <h3 class="section-title">💰 交易配置</h3>
@@ -722,6 +741,28 @@
                         <p class="hint" id="selectedStocksHint">请选择板块</p>
                     </div>
 
+                    <!-- 回测时间范围 -->
+                    <div class="input-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px;">
+                        <div>
+                            <label style="font-size: 12px; color: #666;">回测开始日期</label>
+                            <input type="date" id="backtestStartDate" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 12px; color: #666;">回测结束日期</label>
+                            <input type="date" id="backtestEndDate" style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                        </div>
+                    </div>
+
+                    <!-- 成交额排名筛选 -->
+                    <div class="input-group" style="margin-bottom: 4px;">
+                        <label style="font-size: 12px; color: #666;">
+                            成交额排名过滤
+                            <span style="color: #999; font-weight: normal;">（前一日成交额须排在所有缓存股票前 N 名，0 = 不过滤）</span>
+                        </label>
+                        <input type="number" id="turnoverRankTopN" min="0" step="50" value="0"
+                               style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                    </div>
+
                     <button class="btn-primary" style="width: 100%;" onclick="runBacktestCache()">运行回测</button>
 
                     <div class="loading" id="backtestLoading">
@@ -773,6 +814,10 @@
                                 <div class="stat-label">胜率</div>
                                 <div class="stat-value" id="resultWinRate">0%</div>
                             </div>
+                            <div class="stat-card">
+                                <div class="stat-label">最终资金</div>
+                                <div class="stat-value" id="resultFinalCapital" style="font-size: 15px;">-</div>
+                            </div>
                         </div>
 
                         <!-- 交易记录展示 -->
@@ -798,6 +843,8 @@
                                     <th>卖出日期</th>
                                     <th>卖出价</th>
                                     <th>收益率</th>
+                                    <th>持仓数</th>
+                                    <th>仓位%</th>
                                 </tr>
                             </thead>
                             <tbody id="tradesTable"></tbody>
@@ -806,31 +853,15 @@
                 </div>
             </div>
 
-            <!-- 标签页3: 状态 -->
-            <div class="tab-content" id="status">
+            <!-- 标签页2: 历史记录 -->
+            <div class="tab-content" id="history">
                 <div class="section">
-                    <div class="section-title">📊 缓存状态</div>
-
-                    <div class="cache-status">
-                        <div class="status-row">
-                            <div class="status-label">总记录数:</div>
-                            <div class="status-value" id="totalRecords">-</div>
-                        </div>
-                        <div class="status-row">
-                            <div class="status-label">数据库大小:</div>
-                            <div class="status-value" id="dbSize">-</div>
-                        </div>
-                        <div class="status-row">
-                            <div class="status-label">数据库位置:</div>
-                            <div class="status-value" id="dbFile" style="font-size: 10px; word-break: break-all;">-</div>
-                        </div>
+                    <div class="section-title">📋 历史回测记录
+                        <span style="font-size: 12px; font-weight: normal; color: #999; margin-left: 8px;">最近 10 条</span>
                     </div>
-
-                    <div class="section-title">📝 更新日志</div>
-                    <div id="updateLogs"></div>
-
-                    <div class="section-title" style="margin-top: 20px;">🗑️ 危险操作</div>
-                    <button class="btn-danger" onclick="clearAllCache()">清空所有缓存</button>
+                    <div id="historyList">
+                        <p style="color: #999; font-size: 13px; text-align: center; padding: 20px 0;">暂无记录</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1136,10 +1167,6 @@
 
             document.getElementById(tabName).classList.add('active');
             event.target.classList.add('active');
-
-            if (tabName === 'status') {
-                updateCacheStatus();
-            }
         }
 
         // 跳转到参数配置页面
@@ -1149,69 +1176,6 @@
 
 
         // 加载板块列表
-        async function loadSectors() {
-            try {
-                const response = await fetch('/api/sectors');
-                const result = await response.json();
-
-                if (result.success) {
-                    const sectorSelect = document.getElementById('sectorSelect');
-                    result.sectors.forEach(sector => {
-                        const option = document.createElement('option');
-                        option.value = sector.key;
-                        option.textContent = `${sector.name} - ${sector.description}`;
-                        sectorSelect.appendChild(option);
-                    });
-                    // 设置默认值为中证500
-                    sectorSelect.value = '中证500';
-                }
-            } catch (error) {
-                console.error('Failed to load sectors:', error);
-            }
-        }
-
-        // 按板块批量获取（自动获取全部）
-        async function batchFetchBySector() {
-            const sector = document.getElementById('sectorSelect').value;
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-
-            if (!sector) {
-                showMessage('batchSectorMessage', '请选择板块', 'error');
-                return;
-            }
-
-            showMessage('batchSectorMessage', `🚀 正在获取${sector}全部市场数据...`, 'warning');
-
-            try {
-                const response = await fetch('/api/cache/batch-fetch-sector', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        sector: sector,
-                        start_date: startDate.replace(/-/g, ''),
-                        end_date: endDate.replace(/-/g, ''),
-                        limit: null  // 不限制，获取全部
-                    })
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    const stocksPreview = result.stocks && result.stocks.length > 0
-                        ? result.stocks.slice(0, 5).join(', ')
-                        : '已获取';
-                    showMessage('batchSectorMessage',
-                        `✓ 已开始获取${sector}全部数据(共${result.stocks_count}只股票)！\n首批预览: ${stocksPreview}...`,
-                        'success');
-                } else {
-                    showMessage('batchSectorMessage', `✗ ${result.error || '获取失败'}`, 'error');
-                }
-            } catch (error) {
-                showMessage('batchSectorMessage', `✗ 网络错误: ${error.message}`, 'error');
-            }
-        }
-
         // 回测
         async function runBacktestCache() {
             try {
@@ -1281,7 +1245,10 @@
                         initial_capital: tradingSettings.initialCapital,
                         position_ratio: tradingSettings.positionRatio,
                         commission_rate: tradingSettings.commissionRate,
-                        slippage: tradingSettings.slippage
+                        slippage: tradingSettings.slippage,
+                        backtest_start: document.getElementById('backtestStartDate').value || null,
+                        backtest_end:   document.getElementById('backtestEndDate').value   || null,
+                        turnover_rank_top_n: parseInt(document.getElementById('turnoverRankTopN').value) || 0,
                     })
                 });
 
@@ -1351,6 +1318,11 @@
 
             document.getElementById('resultWinRate').textContent = result.win_rate.toFixed(1) + '%';
 
+            const finalCapEl = document.getElementById('resultFinalCapital');
+            const finalCap = parseFloat(result.final_capital);
+            finalCapEl.textContent = '¥' + finalCap.toLocaleString('zh-CN', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+            finalCapEl.style.color = finalCap >= (result.portfolio_summary?.initial_capital || finalCap) ? '#f44336' : '#4caf50';
+
             // 更新交易记录表格（带序号、更多字段）
             const tbody = document.getElementById('tradesTable');
             tbody.innerHTML = result.trades.map((trade, index) => `
@@ -1364,6 +1336,8 @@
                     <td style="color: ${trade.return > 0 ? '#f44336' : '#4caf50'}; font-weight: bold;">
                         ${trade.return > 0 ? '+' : ''}${trade.return.toFixed(2)}%
                     </td>
+                    <td>${trade.open_positions ?? '-'}</td>
+                    <td>${trade.position_ratio != null ? trade.position_ratio.toFixed(1) + '%' : '-'}</td>
                 </tr>
             `).join('');
 
@@ -1384,7 +1358,10 @@
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        symbols: currentBacktestSymbols
+                        symbols: currentBacktestSymbols,
+                        backtest_start: document.getElementById('backtestStartDate').value || null,
+                        backtest_end:   document.getElementById('backtestEndDate').value   || null,
+                        turnover_rank_top_n: parseInt(document.getElementById('turnoverRankTopN').value) || 0,
                     })
                 });
 
@@ -1424,57 +1401,6 @@
             }
         }
 
-        // 更新缓存状态
-        async function updateCacheStatus() {
-            try {
-                const response = await fetch('/api/cache/status');
-                const status = await response.json();
-
-                if (status.success) {
-                    document.getElementById('totalRecords').textContent = status.total_records;
-                    document.getElementById('dbSize').textContent = status.db_size + ' MB';
-                    document.getElementById('dbFile').textContent = status.db_file;
-
-                    const logs = status.update_logs.map(log => `
-                        <div class="log-item">
-                            <div class="log-header">${log.symbol}</div>
-                            <div class="log-details">
-                                📝 ${log.record_count} 条数据 | 更新于 ${log.last_date} | 最后更新: ${log.last_update}
-                            </div>
-                        </div>
-                    `).join('');
-
-                    document.getElementById('updateLogs').innerHTML = logs || '<p style="color: #999; font-size: 12px;">暂无数据</p>';
-                }
-            } catch (error) {
-                console.error('Failed to get cache status:', error);
-            }
-        }
-
-        // 清空缓存
-        async function clearAllCache() {
-            if (!confirm('确定要清空所有缓存数据吗？此操作无法撤销！')) {
-                return;
-            }
-
-            try {
-                const response = await fetch('/api/cache/clear', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({})
-                });
-
-                const result = await response.json();
-
-                if (result.success) {
-                    alert('✓ 已清空缓存');
-                    updateCacheStatus();
-                }
-            } catch (error) {
-                alert('✗ 错误: ' + error.message);
-            }
-        }
-
         // 显示消息
         function showMessage(elementId, message, type) {
             const el = document.getElementById(elementId);
@@ -1508,16 +1434,135 @@
             }
         }
 
+        // 从 /api/config 加载回测默认起止日期
+        async function loadBacktestDates() {
+            try {
+                const res = await fetch('/api/config');
+                const cfg = await res.json();
+                const startEl = document.getElementById('backtestStartDate');
+                const endEl   = document.getElementById('backtestEndDate');
+                if (cfg.backtest_start) startEl.value = cfg.backtest_start;
+                if (cfg.backtest_end)   endEl.value   = cfg.backtest_end;
+                // 限制可选范围不超出数据获取范围
+                if (cfg.data_fetch_start) { startEl.min = cfg.data_fetch_start; endEl.min = cfg.data_fetch_start; }
+                if (cfg.data_fetch_end)   { startEl.max = cfg.data_fetch_end;   endEl.max = cfg.data_fetch_end;   }
+                // 加载成交额排名过滤默认值
+                if (cfg.turnover_rank_top_n != null) {
+                    document.getElementById('turnoverRankTopN').value = cfg.turnover_rank_top_n;
+                }
+            } catch(e) { console.warn('加载回测日期配置失败', e); }
+        }
+
+        // ── 历史回测记录 ──────────────────────────────────────────────────────
+        async function loadHistory() {
+            const container = document.getElementById('historyList');
+            container.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">加载中...</p>';
+            try {
+                const res = await fetch('/api/history');
+                const data = await res.json();
+                if (!data.success || data.records.length === 0) {
+                    container.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">暂无记录</p>';
+                    return;
+                }
+                container.innerHTML = data.records.map(r => {
+                    const ret = parseFloat(r.total_return);
+                    const retClass = ret > 0 ? 'pos' : 'neg';
+                    const retStr = (ret > 0 ? '+' : '') + ret.toFixed(2) + '%';
+                    const filterStr = r.turnover_rank_top_n > 0 ? `前${r.turnover_rank_top_n}名` : '不限';
+                    return `
+                    <div class="history-card">
+                        <button class="history-delete" onclick="deleteHistory('${r.id}', this)" title="删除">×</button>
+                        <div class="history-meta">${r.created_at}</div>
+                        <div class="history-title">${r.strategy_name}</div>
+                        <div class="history-stats">
+                            <span class="history-stat">回测期间 <span class="val">${r.backtest_start} ~ ${r.backtest_end}</span></span>
+                            <span class="history-stat">股票数 <span class="val">${r.stocks_count}</span></span>
+                            <span class="history-stat">交易数 <span class="val">${r.total_trades}</span></span>
+                            <span class="history-stat">总收益 <span class="val ${retClass}">${retStr}</span></span>
+                            <span class="history-stat">胜率 <span class="val">${r.win_rate}%</span></span>
+                            <span class="history-stat">初始资金 <span class="val">¥${Number(r.initial_capital).toLocaleString()}</span></span>
+                            <span class="history-stat">最终资金 <span class="val">¥${Number(r.final_capital).toLocaleString()}</span></span>
+                            <span class="history-stat">成交额过滤 <span class="val">${filterStr}</span></span>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch(e) {
+                container.innerHTML = '<p style="color:#f44336;font-size:13px;text-align:center;padding:20px 0;">加载失败</p>';
+            }
+        }
+
+        async function deleteHistory(recordId, btn) {
+            btn.closest('.history-card').style.opacity = '0.4';
+            try {
+                await fetch(`/api/history/${recordId}`, { method: 'DELETE' });
+                btn.closest('.history-card').remove();
+                if (document.querySelectorAll('.history-card').length === 0) {
+                    document.getElementById('historyList').innerHTML =
+                        '<p style="color:#999;font-size:13px;text-align:center;padding:20px 0;">暂无记录</p>';
+                }
+            } catch(e) {
+                btn.closest('.history-card').style.opacity = '1';
+            }
+        }
+
+        // ── 更新所有数据 ──────────────────────────────────────────────────────
+        let _updatePoller = null;
+
+        async function triggerUpdateAll() {
+            const btn = document.getElementById('updateAllBtn');
+            const bar = document.getElementById('updateAllBar');
+            const msg = document.getElementById('updateAllMsg');
+            const pct = document.getElementById('updateAllPct');
+
+            btn.disabled = true;
+            btn.textContent = '更新中...';
+            bar.style.display = 'block';
+            msg.textContent = '正在启动更新任务...';
+            pct.textContent = '';
+
+            try {
+                const res = await fetch('/api/cache/update-all', { method: 'POST' });
+                const data = await res.json();
+                if (!data.success) {
+                    msg.textContent = '启动失败: ' + (data.error || '未知错误');
+                    btn.disabled = false;
+                    btn.textContent = '更新数据';
+                    return;
+                }
+                msg.textContent = `正在更新 ${data.total} 只股票...`;
+                // 轮询进度
+                _updatePoller = setInterval(async () => {
+                    try {
+                        const sr = await fetch('/api/cache/update-all/status');
+                        const st = await sr.json();
+                        pct.textContent = `${st.done}/${st.total} (${st.progress_pct}%)`;
+                        if (st.status === 'done') {
+                            clearInterval(_updatePoller);
+                            msg.textContent = `更新完成：${st.ok} 只成功，${st.fail} 只失败`;
+                            btn.disabled = false;
+                            btn.textContent = '更新数据';
+                            // 3秒后隐藏进度条
+                            setTimeout(() => { bar.style.display = 'none'; }, 3000);
+                        }
+                    } catch(e) { /* 忽略轮询错误 */ }
+                }, 1500);
+            } catch(e) {
+                msg.textContent = '网络错误: ' + e.message;
+                btn.disabled = false;
+                btn.textContent = '更新数据';
+            }
+        }
+
         // 页面加载时更新状态和加载板块
         window.addEventListener('load', async () => {
-            updateCacheStatus();
-            loadSectors();
             loadCurrentStrategy();  // 加载当前策略名称
             // 初始化回测数据选择功能
             await loadCachedStocks();
             setupBacktestModeSwitch();
             // 初始化交易配置管理
             TradingSettingsManager.init();
+            // 加载回测起止日期默认值
+            await loadBacktestDates();
         });
     </script>
 </body>

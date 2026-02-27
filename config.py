@@ -1,6 +1,8 @@
 # 配置文件
+from datetime import datetime as _dt
+
 START_DATE = "20240101"
-END_DATE = "20250213"
+END_DATE = _dt.now().strftime("%Y%m%d")   # 动态：始终为今天
 
 # 指数配置 - 按板块分类
 INDICES = {
@@ -333,19 +335,23 @@ def get_default_trading_settings() -> dict:
 # ============================================
 
 # 数据获取范围（用于下载历史数据和预热）
-DATA_FETCH_START = "2024-01-01"       # 数据下载开始
-DATA_FETCH_END = "2025-02-24"         # 数据下载结束
+DATA_FETCH_START = "2024-01-01"                          # 数据下载开始
+DATA_FETCH_END = _dt.now().strftime("%Y-%m-%d")          # 数据下载结束（动态：今天）
 
 # 回测期范围（独立设置，真正的回测时间段）
-BACKTEST_START = "2024-06-01"         # ⭐ 回测开始日期
-BACKTEST_END = "2025-01-31"           # ⭐ 回测结束日期
+BACKTEST_START = "2024-06-01"                            # ⭐ 回测开始日期
+BACKTEST_END = _dt.now().strftime("%Y-%m-%d")            # ⭐ 回测结束日期（动态：今天）
 
 # 样本外测试范围（可选，用于验证策略稳定性）
-OOS_START = "2025-02-01"              # OOS期开始
-OOS_END = "2025-02-24"                # OOS期结束
+OOS_START = "2025-02-01"                                 # OOS期开始
+OOS_END = _dt.now().strftime("%Y-%m-%d")                 # OOS期结束（动态：今天）
 
 # 最大仓位限制（风险管理）
 MAX_POSITION_RATIO = 0.80             # 最大总仓位 80%（保留20%现金）
+
+# 成交额排名筛选（0 = 不启用；N = 只允许前一日成交额排名前 N 的股票建仓）
+# 排名基于当前回测中所有已缓存股票的成交额横截面排名
+TURNOVER_RANK_TOP_N = 0               # 默认不过滤
 
 # 成本结构配置
 TRADING_COST_CONFIG = {

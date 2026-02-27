@@ -389,6 +389,7 @@
             }
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -438,7 +439,6 @@
                             <button class="btn-secondary" onclick="resetToDefault()">🔄 恢复默认</button>
                             <button class="btn-info" onclick="reloadPage()">🔃 刷新页面</button>
                             <button class="btn-secondary" onclick="goBackToBacktest()">🏠 返回回测</button>
-                            <button class="btn-secondary" onclick="regenerateKLine()">🎲 重新生成K线</button>
                         </div>
 
                         <div id="paramMessage" class="message"></div>
@@ -495,34 +495,33 @@
                     </div>
                 </div>
 
-                <!-- 右侧面板：图示预览 -->
+                <!-- 右侧面板：信号扫描 -->
                 <div class="right-panel">
-                    <div class="section-title" style="margin-bottom: 15px;">📈 信号预览</div>
+                    <div class="section-title">🔍 信号扫描</div>
 
-                    <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                        <div style="font-size: 13px; color: #666; margin-bottom: 10px;">
-                            <strong>说明：</strong>根据当前参数模拟信号
-                        </div>
-
-                        <!-- K线图示区域 -->
-                        <canvas id="signalChart" width="600" height="400" style="width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px;"></canvas>
-                    </div>
-
-                    <!-- 图例说明 -->
-                    <div style="background: white; padding: 12px; border-radius: 8px; font-size: 12px;">
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: #f44336;">▲</span> <strong>买入信号</strong> - 满足所有买入条件
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: #4caf50;">▼</span> <strong>卖出信号</strong> - 达到持有天数
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="color: #ff9800;">━━</span> <strong>均线</strong> - 趋势判断基准
+                    <!-- 日期范围 + 搜索 -->
+                    <div style="display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:center; margin-bottom:12px;">
+                        <div>
+                            <div style="font-size:11px; color:#999; margin-bottom:3px;">开始日期</div>
+                            <input type="date" id="signalStartDate"
+                                   style="width:100%; padding:7px 8px; border:1px solid #ddd; border-radius:6px; font-size:13px;">
                         </div>
                         <div>
-                            <span style="color: #2196f3;">━━</span> <strong>回踩线</strong> - 短期支撑
+                            <div style="font-size:11px; color:#999; margin-bottom:3px;">结束日期</div>
+                            <input type="date" id="signalEndDate"
+                                   style="width:100%; padding:7px 8px; border:1px solid #ddd; border-radius:6px; font-size:13px;">
                         </div>
+                        <button id="signalScanBtn" onclick="runSignalScan()"
+                                style="padding:8px 16px; background:#1976d2; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:13px; white-space:nowrap; align-self:flex-end; margin-bottom:0;">
+                            搜索
+                        </button>
                     </div>
+
+                    <!-- 状态/提示信息 -->
+                    <div id="signalScanMsg" style="font-size:12px; color:#999; margin-bottom:8px;"></div>
+
+                    <!-- 结果列表 -->
+                    <div id="signalResultList"></div>
                 </div>
             </div>
         </div>
@@ -533,7 +532,7 @@
         window.defaultParams = {};
         window.currentStrategy = '';
         window.allStrategies = [];
-        window.cachedKLineData = null;  // ✅ 新增：缓存K线数据
+        window.cachedKLineData = null;  // retained for compatibility
 
         // 页面加载时获取参数
         window.addEventListener('load', async () => {
@@ -543,10 +542,6 @@
             renderComparison();
             loadPresets();
 
-            // 绘制初始图表
-            setTimeout(() => {
-                drawKLineChart();
-            }, 800);
         });
 
         // 加载所有策略列表
@@ -627,16 +622,6 @@
                     renderParameters();
                     renderComparison();
 
-                    // ✅ 新增：清空K线缓存，下次绘制时重新生成
-                    window.cachedKLineData = null;
-
-                    // 重新绘制图表（可能显示不支持的提示）
-                    setTimeout(() => {
-                        if (typeof drawKLineChart === 'function') {
-                            drawKLineChart();
-                        }
-                    }, 500);
-
                     showMessage('paramMessage', result.message, 'success');
                 } else {
                     showMessage('paramMessage', result.error || '切换失败', 'error');
@@ -689,7 +674,7 @@
                 'macd_fast': {min: 5, max: 20, step: 1},
                 'macd_slow': {min: 15, max: 50, step: 1},
                 'macd_signal': {min: 5, max: 20, step: 1},
-                'stop_loss': {min: 0.01, max: 0.3, step: 0.01},
+                'stop_loss': {min: 0.01, max: 0.5, step: 0.01},
                 'take_profit': {min: 0.05, max: 0.5, step: 0.05},
                 'trailing_stop': {min: 0.01, max: 0.2, step: 0.01},
                 'position_size': {min: 0.01, max: 1, step: 0.05},
@@ -704,7 +689,7 @@
                 'kdj_m2': {min: 1, max: 10, step: 1},
                 'atr_period': {min: 5, max: 30, step: 1},
                 'atr_stop_mult': {min: 0.5, max: 5, step: 0.5},
-                'max_hold_days': {min: 1, max: 20, step: 1},
+                'max_hold_days': {min: 0, max: 60, step: 1},
 
                 // 平衡型多因子策略参数
                 'boll_period': {min: 10, max: 50, step: 1},
@@ -740,7 +725,7 @@
                 'macd_fast': 'MACD快线周期',
                 'macd_slow': 'MACD慢线周期',
                 'macd_signal': 'MACD信号线周期',
-                'stop_loss': '止损幅度比例',
+                'stop_loss': '单笔止损幅度（如 0.10 = 10%），亏损超过此幅度自动平仓，网格策略默认10%',
                 'take_profit': '止盈幅度比例',
                 'trailing_stop': '移动止盈幅度比例',
                 'position_size': '单次仓位大小',
@@ -755,7 +740,7 @@
                 'kdj_m2': 'KDJ平滑参数2',
                 'atr_period': 'ATR计算周期',
                 'atr_stop_mult': 'ATR止损倍数',
-                'max_hold_days': '最大持仓天数',
+                'max_hold_days': '最大持仓交易日数（0=不限制）；持仓满此天数后，下一交易日强制卖出（优先于止损止盈）',
 
                 // 平衡型多因子策略
                 'boll_period': '布林带周期',
@@ -815,13 +800,7 @@
             window.currentParams[paramName] = parseFloat(value);
             display.textContent = value;
 
-            // 实时更新图表（防抖）
-            clearTimeout(window.chartUpdateTimer);
-            window.chartUpdateTimer = setTimeout(() => {
-                if (typeof drawKLineChart === 'function') {
-                    drawKLineChart();
-                }
-            }, 300);
+            // (图表实时更新已移除，改用信号扫描功能)
         }
 
         // 保存参数
@@ -1026,347 +1005,205 @@
             window.location.href = '/';
         }
 
-        // 重新生成K线数据
-        function regenerateKLine() {
-            window.cachedKLineData = null;
-            if (typeof drawKLineChart === 'function') {
-                drawKLineChart();
-            }
-            showMessage('paramMessage', '✓ K线数据已重新生成', 'success');
-        }
+        // ==================== 信号扫描功能 ====================
 
-        // ==================== K线图示功能 ====================
-
-        // 生成模拟K线数据
-        function generateMockKLineData(days = 60) {
-            const data = [];
-            let price = 10 + Math.random() * 5;
-            const baseDate = new Date();
-            baseDate.setDate(baseDate.getDate() - days);
-
-            for (let i = 0; i < days; i++) {
-                const date = new Date(baseDate);
-                date.setDate(date.getDate() + i);
-
-                // 模拟价格波动
-                const change = (Math.random() - 0.48) * 0.5;
-                price = price * (1 + change);
-
-                const open = price;
-                const high = price * (1 + Math.random() * 0.03);
-                const low = price * (1 - Math.random() * 0.03);
-                const close = low + (high - low) * Math.random();
-                const volume = (50 + Math.random() * 100) * 10000;
-
-                data.push({
-                    date: date.toISOString().split('T')[0],
-                    open: open,
-                    high: high,
-                    low: low,
-                    close: close,
-                    volume: volume
-                });
-            }
-
-            return data;
-        }
-
-        // 计算均线
-        function calculateMA(data, period) {
-            const ma = [];
-            for (let i = 0; i < data.length; i++) {
-                if (i < period - 1) {
-                    ma.push(null);
-                } else {
-                    let sum = 0;
-                    for (let j = 0; j < period; j++) {
-                        sum += data[i - j].close;
-                    }
-                    ma.push(sum / period);
-                }
-            }
-            return ma;
-        }
-
-        // 计算成交量均线
-        function calculateVolumeMA(data, period) {
-            const ma = [];
-            for (let i = 0; i < data.length; i++) {
-                if (i < period - 1) {
-                    ma.push(null);
-                } else {
-                    let sum = 0;
-                    for (let j = 0; j < period; j++) {
-                        sum += data[i - j].volume;
-                    }
-                    ma.push(sum / period);
-                }
-            }
-            return ma;
-        }
-
-        // 检测买入信号
-        function detectBuySignals(data, params) {
-            const signals = [];
-            const ma = calculateMA(data, params.ma_period || 30);
-            const retestMA = calculateMA(data, params.retest_period || 5);
-            const volumeMA = calculateVolumeMA(data, 20);
-
-            for (let i = Math.max(params.ma_period || 30, 20); i < data.length; i++) {
-                // 买入条件（简化版，便于可视化）：
-                // 1. 价格在长期均线上方（趋势向上）
-                // 2. 价格接近短期均线（回踩机会，范围±8%）
-                // 3. 成交量放大（最近3天 vs 1天均量）
-                const priceAboveMA = data[i].close > ma[i];
-                const nearRetestMA = Math.abs(data[i].close - retestMA[i]) / retestMA[i] < 0.08;
-
-                // 计算最近3天总量能
-                let recentVolume = 0;
-                for (let j = 0; j < 3 && i - j >= 0; j++) {
-                    recentVolume += data[i - j].volume;
-                }
-                // 简化量能条件：最近3天总量 vs 1天均量 × 量能倍数
-                const volumeSpike = recentVolume > (volumeMA[i] * (params.volume_multiplier || 2));
-
-                if (priceAboveMA && nearRetestMA && volumeSpike) {
-                    signals.push({
-                        index: i,
-                        type: 'buy',
-                        price: data[i].close
-                    });
-                }
-            }
-
-            return signals;
-        }
-
-        // 绘制K线图
-        function drawKLineChart() {
-            const canvas = document.getElementById('signalChart');
-            if (!canvas || !canvas.getContext) return;
-
-            const ctx = canvas.getContext('2d');
-            const width = canvas.width;
-            const height = canvas.height;
-
-            // 清空画布
-            ctx.clearRect(0, 0, width, height);
-
-            // 检查当前策略是否支持图表预览
-            const supportedStrategies = ['volume_breakout'];
-            const currentStrategy = window.currentStrategy || '';
-
-            if (!supportedStrategies.includes(currentStrategy)) {
-                // 显示提示信息
-                ctx.fillStyle = '#666';
-                ctx.font = '16px Arial';
-                ctx.textAlign = 'center';
-                ctx.fillText('当前策略暂不支持图表预览', width / 2, height / 2 - 20);
-                ctx.font = '14px Arial';
-                ctx.fillStyle = '#999';
-                ctx.fillText('仅"量能突破回踩策略"支持信号可视化', width / 2, height / 2 + 10);
-                return;
-            }
-
-            // 生成数据（只在第一次或缓存为空时生成数据）
-            // 减少K线数量到40根，让每根K线更宽更明显
-            if (!window.cachedKLineData) {
-                window.cachedKLineData = generateMockKLineData(40);
-            }
-            const data = window.cachedKLineData;
-            const params = window.currentParams || {};
-
-            // 计算指标
-            const ma = calculateMA(data, params.ma_period || 30);
-            const retestMA = calculateMA(data, params.retest_period || 5);
-            const buySignals = detectBuySignals(data, params);
-
-            // 计算卖出信号（买入后N天）
-            const sellSignals = buySignals.map(signal => ({
-                index: Math.min(signal.index + (params.hold_days || 5), data.length - 1),
-                type: 'sell',
-                price: data[Math.min(signal.index + (params.hold_days || 5), data.length - 1)].close,
-                buyIndex: signal.index
-            }));
-
-            // 计算价格范围
-            const prices = data.map(d => [d.high, d.low]).flat();
-            const maxPrice = Math.max(...prices);
-            const minPrice = Math.min(...prices);
-            const priceRange = maxPrice - minPrice;
-
-            // 图表区域划分
-            const chartHeight = height * 0.7;  // 70% for price
-            const volumeHeight = height * 0.25; // 25% for volume
-            const padding = 40;
-
-            // 计算X轴每根K线的宽度
-            const barWidth = (width - padding * 2) / data.length;
-            const candleWidth = barWidth * 0.8;  // 增加到0.8，让K线更宽更明显
-
-            // 辅助函数：价格转Y坐标
-            function priceToY(price) {
-                return padding + (maxPrice - price) / priceRange * (chartHeight - padding);
-            }
-
-            // 辅助函数：成交量转高度
-            const maxVolume = Math.max(...data.map(d => d.volume));
-            function volumeToHeight(volume) {
-                return (volume / maxVolume) * volumeHeight;
-            }
-
-            // 1. 绘制背景网格
-            ctx.strokeStyle = '#f0f0f0';
-            ctx.lineWidth = 1;
-            for (let i = 0; i < 5; i++) {
-                const y = padding + (chartHeight - padding) * i / 4;
-                ctx.beginPath();
-                ctx.moveTo(padding, y);
-                ctx.lineTo(width - padding, y);
-                ctx.stroke();
-            }
-
-            // 2. 绘制K线（实体柱状图：从最低价到最高价的完整柱子）
-            data.forEach((d, i) => {
-                const x = padding + i * barWidth + barWidth / 2;
-                const isRed = d.close > d.open;  // 中国习惯：红涨绿跌
-
-                // 绘制从最低价到最高价的完整柱子
-                const top = priceToY(d.high);
-                const bottom = priceToY(d.low);
-                const barHeight = bottom - top;
-
-                ctx.fillStyle = isRed ? '#e53935' : '#43a047';
-                ctx.fillRect(x - candleWidth / 2, top, candleWidth, Math.max(barHeight, 2));
+        // 设置默认日期为今天
+        (function() {
+            const today = new Date().toISOString().slice(0, 10);
+            document.addEventListener('DOMContentLoaded', () => {
+                const s = document.getElementById('signalStartDate');
+                const e = document.getElementById('signalEndDate');
+                if (s) s.value = today;
+                if (e) e.value = today;
             });
+        })();
 
-            // 3. 绘制均线
-            if (ma.length > 0) {
-                ctx.strokeStyle = '#ff9800';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                let started = false;
-                ma.forEach((m, i) => {
-                    if (m !== null) {
-                        const x = padding + i * barWidth + barWidth / 2;
-                        const y = priceToY(m);
-                        if (!started) {
-                            ctx.moveTo(x, y);
-                            started = true;
-                        } else {
-                            ctx.lineTo(x, y);
+        async function runSignalScan() {
+            const today = new Date().toISOString().slice(0, 10);
+            const startDate = (document.getElementById('signalStartDate') || {}).value || today;
+            const endDate   = (document.getElementById('signalEndDate')   || {}).value || today;
+            const msg = document.getElementById('signalScanMsg');
+            const list = document.getElementById('signalResultList');
+            const btn = document.getElementById('signalScanBtn');
+
+            msg.textContent = '扫描中，请稍候...';
+            msg.style.color = '#ff9800';
+            list.innerHTML = '';
+            btn.disabled = true;
+
+            try {
+                // 获取当前策略 key 和参数
+                const stratRes = await fetch('/api/strategies/current');
+                const stratData = await stratRes.json();
+                const strategyKey = stratData.current_strategy || null;
+
+                const paramsRes = await fetch(`/api/strategies/${strategyKey}/params`);
+                const paramsData = await paramsRes.json();
+                const params = paramsData.params || {};
+
+                const res = await fetch('/api/signals/scan', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ start_date: startDate, end_date: endDate, strategy_key: strategyKey, params })
+                });
+                const data = await res.json();
+
+                if (!data.success) {
+                    msg.textContent = '扫描失败: ' + (data.error || '未知错误');
+                    msg.style.color = '#f44336';
+                    return;
+                }
+
+                const { matched, total_scanned, strategy_name, stocks } = data;
+                const rangeStr = startDate === endDate ? startDate : `${startDate} ~ ${endDate}`;
+                msg.textContent = `${rangeStr} · ${strategy_name} · 扫描 ${total_scanned} 只，命中 ${matched} 只`;
+                msg.style.color = '#4caf50';
+
+                if (!stocks || stocks.length === 0) {
+                    list.innerHTML = '<p style="color:#999;font-size:13px;text-align:center;padding:16px 0;">该日期范围内没有符合条件的股票</p>';
+                    return;
+                }
+
+                list.innerHTML = stocks.map(s => {
+                    const chg = parseFloat(s.change_pct || 0);
+                    const chgColor = chg > 0 ? '#f44336' : chg < 0 ? '#4caf50' : '#666';
+                    const chgStr = (chg > 0 ? '+' : '') + chg.toFixed(2) + '%';
+                    const sigDate = s.date || startDate;
+                    return `
+                    <div onclick="openKlineModal('${s.symbol}', '${sigDate}')"
+                         style="display:flex; align-items:center; justify-content:space-between;
+                                padding:10px 14px; border:1px solid #e8e8e8; border-radius:6px;
+                                margin-bottom:6px; cursor:pointer; background:#fafafa; transition:background 0.15s;"
+                         onmouseover="this.style.background='#f0f7ff'"
+                         onmouseout="this.style.background='#fafafa'">
+                        <div>
+                            <span style="font-weight:bold; font-size:14px;">${s.symbol}</span>
+                            <span style="font-size:11px; color:#1976d2; margin-left:8px; background:#e3f2fd; padding:1px 5px; border-radius:3px;">${sigDate}</span>
+                            ${s.ma5 ? `<span style="font-size:11px; color:#999; margin-left:6px;">MA5: ${s.ma5}</span>` : ''}
+                            ${s.ma30 ? `<span style="font-size:11px; color:#999; margin-left:6px;">MA30: ${s.ma30}</span>` : ''}
+                        </div>
+                        <div style="text-align:right;">
+                            <span style="font-size:15px; font-weight:bold;">${s.close}</span>
+                            <span style="font-size:12px; color:${chgColor}; margin-left:6px;">${chgStr}</span>
+                        </div>
+                    </div>`;
+                }).join('');
+
+            } catch(e) {
+                msg.textContent = '网络错误: ' + e.message;
+                msg.style.color = '#f44336';
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // ── K线弹窗 ────────────────────────────────────────────────────────────────
+
+        let _klineChartInstance = null;
+
+        async function openKlineModal(symbol, date) {
+            const modal = document.getElementById('klineModal');
+            document.getElementById('klineModalTitle').textContent = `${symbol}  信号日期: ${date}`;
+            modal.style.display = 'flex';
+            document.getElementById('klineChart').innerHTML = '<p style="text-align:center;padding:40px 0;color:#999;">加载中...</p>';
+
+            try {
+                const res = await fetch(`/api/signals/kline/${symbol}?date=${date}&days=10`);
+                const data = await res.json();
+                if (!data.success || !data.kline) throw new Error(data.error || '无数据');
+                renderKlineChart(data.kline, data.signal_date);
+            } catch(e) {
+                document.getElementById('klineChart').innerHTML = `<p style="text-align:center;padding:40px 0;color:#f44336;">加载失败: ${e.message}</p>`;
+            }
+        }
+
+        function closeKlineModal() {
+            document.getElementById('klineModal').style.display = 'none';
+            if (_klineChartInstance) { _klineChartInstance.dispose(); _klineChartInstance = null; }
+        }
+
+        function renderKlineChart(kline, signalDate) {
+            const container = document.getElementById('klineChart');
+            container.innerHTML = '';
+            if (_klineChartInstance) { _klineChartInstance.dispose(); }
+            _klineChartInstance = echarts.init(container);
+
+            const dates   = kline.map(d => d.date);
+            const ohlc    = kline.map(d => [d.open, d.close, d.low, d.high]);
+            const volumes = kline.map(d => d.volume);
+
+            // 标记信号日
+            const markData = kline
+                .map((d, i) => d.is_signal ? { xAxis: i, name: '买入信号' } : null)
+                .filter(Boolean);
+
+            const option = {
+                backgroundColor: '#fff',
+                grid: [
+                    { left: 50, right: 20, top: 20, bottom: 100 },
+                    { left: 50, right: 20, top: '72%', bottom: 30 }
+                ],
+                xAxis: [
+                    { type: 'category', data: dates, gridIndex: 0, axisLabel: { fontSize: 10 },
+                      axisLine: { onZero: false } },
+                    { type: 'category', data: dates, gridIndex: 1, axisLabel: { show: false } }
+                ],
+                yAxis: [
+                    { scale: true, gridIndex: 0, axisLabel: { fontSize: 10 }, splitNumber: 4 },
+                    { scale: true, gridIndex: 1, axisLabel: { show: false }, splitNumber: 2 }
+                ],
+                series: [
+                    {
+                        type: 'candlestick',
+                        xAxisIndex: 0, yAxisIndex: 0,
+                        data: ohlc,
+                        itemStyle: {
+                            color: '#f44336', color0: '#4caf50',
+                            borderColor: '#f44336', borderColor0: '#4caf50'
+                        },
+                        markLine: markData.length ? {
+                            silent: true,
+                            data: markData.map(m => [
+                                { xAxis: m.xAxis, yAxis: 'min', symbol: 'none' },
+                                { xAxis: m.xAxis, yAxis: 'max', symbol: 'none',
+                                  lineStyle: { color: '#1976d2', type: 'dashed', width: 1.5 },
+                                  label: { formatter: '买入信号', position: 'end', fontSize: 10, color: '#1976d2' }
+                                }
+                            ])
+                        } : undefined
+                    },
+                    {
+                        type: 'bar',
+                        xAxisIndex: 1, yAxisIndex: 1,
+                        data: volumes,
+                        itemStyle: {
+                            color: (params) => kline[params.dataIndex].close >= kline[params.dataIndex].open ? '#f44336' : '#4caf50'
                         }
                     }
-                });
-                ctx.stroke();
-            }
-
-            // 4. 绘制回踩均线
-            if (retestMA.length > 0) {
-                ctx.strokeStyle = '#2196f3';
-                ctx.lineWidth = 1.5;
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                let started = false;
-                retestMA.forEach((m, i) => {
-                    if (m !== null) {
-                        const x = padding + i * barWidth + barWidth / 2;
-                        const y = priceToY(m);
-                        if (!started) {
-                            ctx.moveTo(x, y);
-                            started = true;
-                        } else {
-                            ctx.lineTo(x, y);
-                        }
+                ],
+                tooltip: {
+                    trigger: 'axis', axisPointer: { type: 'cross' },
+                    formatter: (params) => {
+                        const c = params[0];
+                        if (!c) return '';
+                        const d = kline[c.dataIndex];
+                        return `${d.date}<br/>开:${d.open} 收:${d.close}<br/>高:${d.high} 低:${d.low}<br/>量:${d.volume.toLocaleString()}`;
                     }
-                });
-                ctx.stroke();
-                ctx.setLineDash([]);
-            }
-
-            // 5. 绘制成交量（增加透明度和宽度）
-            const volumeBaseY = chartHeight + 20;
-            data.forEach((d, i) => {
-                const x = padding + i * barWidth + barWidth / 2;
-                const h = volumeToHeight(d.volume);
-                const isRed = d.close > d.open;
-
-                // 使用更高的不透明度（0.8）让成交量更明显
-                ctx.fillStyle = isRed ? 'rgba(229, 57, 53, 0.8)' : 'rgba(67, 160, 71, 0.8)';
-                ctx.fillRect(x - candleWidth / 2, volumeBaseY + volumeHeight - h, candleWidth, h);
-            });
-
-            // 6. 绘制买入信号
-            ctx.font = 'bold 16px Arial';
-            ctx.textAlign = 'center';
-            buySignals.forEach(signal => {
-                const x = padding + signal.index * barWidth + barWidth / 2;
-                const y = priceToY(signal.price) - 15;
-
-                ctx.fillStyle = '#f44336';
-                ctx.fillText('▲', x, y);
-            });
-
-            // 7. 绘制卖出信号
-            sellSignals.forEach(signal => {
-                const x = padding + signal.index * barWidth + barWidth / 2;
-                const y = priceToY(signal.price) + 20;
-
-                ctx.fillStyle = '#4caf50';
-                ctx.fillText('▼', x, y);
-
-                // 连线显示持有期
-                const buyX = padding + signal.buyIndex * barWidth + barWidth / 2;
-                const buyY = priceToY(data[signal.buyIndex].close);
-
-                ctx.strokeStyle = 'rgba(255, 152, 0, 0.3)';
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.moveTo(buyX, buyY);
-                ctx.lineTo(x, priceToY(signal.price));
-                ctx.stroke();
-            });
-
-            // 8. 绘制坐标轴标签
-            ctx.fillStyle = '#666';
-            ctx.font = '11px Arial';
-            ctx.textAlign = 'right';
-
-            // Y轴价格标签
-            for (let i = 0; i < 5; i++) {
-                const price = maxPrice - (priceRange * i / 4);
-                const y = padding + (chartHeight - padding) * i / 4;
-                ctx.fillText(price.toFixed(2), padding - 5, y + 4);
-            }
-
-            // X轴日期标签（只显示部分）
-            ctx.textAlign = 'center';
-            for (let i = 0; i < data.length; i += Math.floor(data.length / 5)) {
-                const x = padding + i * barWidth + barWidth / 2;
-                const date = data[i].date.substring(5);  // MM-DD
-                ctx.fillText(date, x, height - 5);
-            }
-
-            // 9. 绘制参数提示
-            ctx.fillStyle = '#333';
-            ctx.font = '12px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(`MA${params.ma_period || 30} | MA${params.retest_period || 5} | 量能${params.volume_multiplier || 2}倍 | 持有${params.hold_days || 5}天`, padding, 15);
-
-            // 信号统计
-            ctx.fillText(`买入信号: ${buySignals.length} 个 | 卖出信号: ${sellSignals.length} 个`, padding, height - volumeHeight - 10);
+                },
+                dataZoom: [{ type: 'inside', xAxisIndex: [0, 1] }]
+            };
+            _klineChartInstance.setOption(option);
         }
-
-        // 策略切换后重新绘制图表（增强原有函数）
-        const _originalSwitchStrategy = switchStrategy;
-        switchStrategy = async function() {
-            await _originalSwitchStrategy();
-            setTimeout(() => {
-                if (typeof drawKLineChart === 'function') {
-                    drawKLineChart();
-                }
-            }, 500);
-        };
     </script>
+
+<!-- K线弹窗 -->
+<div id="klineModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9999; align-items:center; justify-content:center;">
+    <div style="background:#fff; border-radius:10px; width:min(700px,95vw); padding:20px; position:relative;">
+        <button onclick="closeKlineModal()"
+                style="position:absolute; top:12px; right:16px; background:none; border:none; font-size:20px; cursor:pointer; color:#999;">×</button>
+        <div id="klineModalTitle" style="font-size:15px; font-weight:bold; margin-bottom:12px;"></div>
+        <div id="klineChart" style="width:100%; height:320px;"></div>
+    </div>
+</div>
 </body>
 </html>

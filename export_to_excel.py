@@ -4,6 +4,7 @@ from datetime import datetime
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Font, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.chart import LineChart, Reference
 from strategy import VolumeBreakoutStrategy
 from config import STRATEGY_PARAMS
 
@@ -211,8 +212,144 @@ def export_detailed_trades_to_excel(symbol: str, df: pd.DataFrame, output_file: 
     return output_file
 
 
+def _safe_float(val, default=0.0) -> float:
+    """将值安全转换为 float，NaN / inf / 无法转换的情况一律返回 default。
+    防止 openpyxl 将 float('nan') 写入单元格时存为文本字符串。
+    """
+    try:
+        v = float(val)
+        if v != v or abs(v) > 1e15:   # NaN 检测：nan != nan；过大值也替换
+            return default
+        return v
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_daily_position_series(trade_history: list, all_data: dict,
+                                  backtest_start: str, backtest_end: str) -> pd.DataFrame:
+    """
+    从交易历史重建每个交易日的仓位状态（向前填充）。
+
+    返回 DataFrame，列: 日期 | 持仓笔数 | 仓位比例%
+    """
+    # 收集回测区间内所有交易日
+    all_dates = set()
+    for df in (all_data or {}).values():
+        dates = pd.to_datetime(df['日期'])
+        mask = (dates >= backtest_start) & (dates <= backtest_end)
+        all_dates.update(dates[mask].tolist())
+
+    if not all_dates:
+        return pd.DataFrame(columns=['日期', '持仓笔数', '仓位比例%'])
+
+    all_dates = sorted(all_dates)
+
+    # 提取含仓位信息的交易事件并按时间排序
+    events = []
+    for t in (trade_history or []):
+        if 'open_positions' in t:
+            events.append((
+                pd.to_datetime(t['date']),
+                int(t['open_positions']),
+                float(t.get('position_ratio', 0.0)),
+            ))
+    events.sort(key=lambda x: x[0])
+
+    # 逐日向前填充
+    rows = []
+    cur_open = 0
+    cur_ratio = 0.0
+    evt_idx = 0
+
+    for date in all_dates:
+        while evt_idx < len(events) and events[evt_idx][0].date() <= date.date():
+            _, cur_open, cur_ratio = events[evt_idx]
+            evt_idx += 1
+        rows.append({
+            '日期': date.strftime('%Y-%m-%d'),
+            '持仓笔数': cur_open,
+            '仓位比例%': round(cur_ratio * 100, 2),
+        })
+
+    return pd.DataFrame(rows)
+
+
+def _add_position_chart_sheet(wb: Workbook, daily_df: pd.DataFrame) -> None:
+    """
+    在工作簿中新建"仓位变化"Sheet，写入每日仓位数据并插入折线图。
+    """
+    ws = wb.create_sheet("仓位变化")
+    n = len(daily_df)
+
+    # ── 表头 ──────────────────────────────────────────────────────────────────
+    for col, header in enumerate(['日期', '持仓笔数', '仓位比例%'], 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        cell.alignment = Alignment(horizontal="center")
+
+    ws.column_dimensions['A'].width = 14
+    ws.column_dimensions['B'].width = 12
+    ws.column_dimensions['C'].width = 12
+
+    if n == 0:
+        return
+
+    # ── 数据行 ────────────────────────────────────────────────────────────────
+    for i, row in daily_df.iterrows():
+        r = i + 2
+        ws.cell(row=r, column=1, value=row['日期'])
+        ws.cell(row=r, column=2, value=int(row['持仓笔数']))
+        ws.cell(row=r, column=3, value=float(row['仓位比例%']))
+
+    cats = Reference(ws, min_col=1, min_row=2, max_row=n + 1)
+
+    # ── 图表①: 仓位比例% 折线图 ───────────────────────────────────────────────
+    chart1 = LineChart()
+    chart1.title = "每日仓位比例 (%)"
+    chart1.style = 10
+    chart1.y_axis.title = "仓位比例 (%)"
+    chart1.x_axis.title = "日期"
+    chart1.width = 28
+    chart1.height = 14
+
+    data1 = Reference(ws, min_col=3, min_row=1, max_row=n + 1)
+    chart1.add_data(data1, titles_from_data=True)
+    chart1.set_categories(cats)
+
+    # 隐藏数据标记，让线条更清晰
+    s1 = chart1.series[0]
+    s1.smooth = False
+    s1.marker.symbol = "none"
+
+    ws.add_chart(chart1, "E2")
+
+    # ── 图表②: 持仓笔数 折线图 ───────────────────────────────────────────────
+    chart2 = LineChart()
+    chart2.title = "每日持仓笔数"
+    chart2.style = 10
+    chart2.y_axis.title = "持仓笔数"
+    chart2.x_axis.title = "日期"
+    chart2.width = 28
+    chart2.height = 14
+
+    data2 = Reference(ws, min_col=2, min_row=1, max_row=n + 1)
+    chart2.add_data(data2, titles_from_data=True)
+    chart2.set_categories(cats)
+
+    s2 = chart2.series[0]
+    s2.smooth = False
+    s2.marker.symbol = "none"
+
+    ws.add_chart(chart2, "E32")
+
+
 def export_batch_results_to_excel(all_results: dict, index_names: list = None,
-                                  output_file: str = "回测结果汇总.xlsx"):
+                                  output_file: str = "回测结果汇总.xlsx",
+                                  trade_history: list = None,
+                                  all_data: dict = None,
+                                  backtest_start: str = None,
+                                  backtest_end: str = None):
     """
     批量导出多个股票的回测结果到Excel
 
@@ -242,14 +379,14 @@ def export_batch_results_to_excel(all_results: dict, index_names: list = None,
 
         ws1.cell(row=row, column=1, value=symbol)
         ws1.cell(row=row, column=2, value=result['num_trades'])
-        ws1.cell(row=row, column=3, value=f"{result['total_return']:.2f}")
-        ws1.cell(row=row, column=4, value=f"{result['avg_return']:.2f}")
-        ws1.cell(row=row, column=5, value=f"{trades_df['收益率%'].max():.2f}")
-        ws1.cell(row=row, column=6, value=f"{trades_df['收益率%'].min():.2f}")
+        ws1.cell(row=row, column=3, value=round(_safe_float(result['total_return']), 2))
+        ws1.cell(row=row, column=4, value=round(_safe_float(result['avg_return']), 2))
+        ws1.cell(row=row, column=5, value=round(_safe_float(trades_df['收益率%'].max()), 2))
+        ws1.cell(row=row, column=6, value=round(_safe_float(trades_df['收益率%'].min()), 2))
 
         wins = len(trades_df[trades_df['收益率%'] > 0])
         win_rate = wins / len(trades_df) * 100 if len(trades_df) > 0 else 0
-        ws1.cell(row=row, column=7, value=f"{win_rate:.1f}")
+        ws1.cell(row=row, column=7, value=round(win_rate, 1))
         ws1.cell(row=row, column=8, value="✓ 有交易")
 
         row += 1
@@ -274,15 +411,16 @@ def export_batch_results_to_excel(all_results: dict, index_names: list = None,
         # 填充交易数据
         for idx, trade in enumerate(result['trades'], 1):
             ws.cell(row=idx+1, column=1, value=idx)
-            ws.cell(row=idx+1, column=2, value=trade['买入日期'].strftime("%Y-%m-%d"))
-            ws.cell(row=idx+1, column=3, value=f"{trade['买入价']:.2f}")
-            ws.cell(row=idx+1, column=4, value=trade['卖出日期'].strftime("%Y-%m-%d"))
-            ws.cell(row=idx+1, column=5, value=f"{trade['卖出价']:.2f}")
-            ws.cell(row=idx+1, column=6, value=trade['持有天数'])
+            ws.cell(row=idx+1, column=2, value=str(trade['买入日期'])[:10])
+            ws.cell(row=idx+1, column=3, value=round(_safe_float(trade['买入价']), 2))
+            ws.cell(row=idx+1, column=4, value=str(trade['卖出日期'])[:10])
+            ws.cell(row=idx+1, column=5, value=round(_safe_float(trade['卖出价']), 2))
+            ws.cell(row=idx+1, column=6, value=int(trade.get('持有天数', 0) or 0))
 
-            # 收益率着色
-            cell = ws.cell(row=idx+1, column=7, value=f"{trade['收益率%']:.2f}")
-            if trade['收益率%'] > 0:
+            # 收益率（数字）+ 着色
+            ret = round(_safe_float(trade['收益率%']), 2)
+            cell = ws.cell(row=idx+1, column=7, value=ret)
+            if ret > 0:
                 cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
             else:
                 cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
@@ -291,6 +429,13 @@ def export_batch_results_to_excel(all_results: dict, index_names: list = None,
 
         for col in range(1, 9):
             ws.column_dimensions[chr(64 + col)].width = 14
+
+    # ── 仓位变化图表 Sheet（可选，需要 trade_history + all_data）─────────────
+    if trade_history and all_data and backtest_start and backtest_end:
+        daily_df = _build_daily_position_series(
+            trade_history, all_data, backtest_start, backtest_end
+        )
+        _add_position_chart_sheet(wb, daily_df)
 
     wb.save(output_file)
     print(f"✓ 已导出到: {output_file}")

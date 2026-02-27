@@ -1,17 +1,22 @@
 {
-  "current_strategy": "volume_breakout",
+  "current_strategy": "double_ma_cross",
   "trading_settings": {
-    "initial_capital": 100000,
+    "initial_capital": 1000000,
     "position_ratio": 0.1,
-    "commission_rate": 0.001,
-    "slippage": 0
+    "commission_rate": 0.002,
+    "slippage": 0.0001
   },
   "params": {
-    "volume_threshold": 1.5,
-    "hold_days": 3,
-    "price_threshold": 0.02,
-    "min_volume": 100000,
-    "turnover_min": 0.01,
-    "turnover_max": 100
+    "ma_short": 5,
+    "ma_long": 20,
+    "ma_filter": 60,
+    "volume_filter": true,
+    "volume_ratio": 1.5,
+    "use_stop_loss": true,
+    "stop_loss": 0.08,
+    "use_take_profit": true,
+    "take_profit": 0.15,
+    "trailing_stop": 0.05,
+    "max_hold_days": 5
   }
 }

@@ -151,6 +151,15 @@ class ConfigManager:
                         'message': '最小成交金额不能大于最大成交金额'
                     }
 
+            # 检查 stop_loss（网格策略单笔止损幅度）
+            if 'stop_loss' in params:
+                sl = params['stop_loss']
+                if not isinstance(sl, (int, float)) or sl < 0.01 or sl > 0.5:
+                    return {
+                        'valid': False,
+                        'message': '止损幅度必须是 1%-50% 之间的数字'
+                    }
+
             return {'valid': True, 'message': '参数验证通过'}
 
         except Exception as e:

@@ -6,6 +6,7 @@ import os
 from io import BytesIO
 from datetime import datetime
 import threading
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from config import START_DATE, END_DATE, STRATEGY_PARAMS, MAX_STOCKS, SECTORS, STRATEGY_MAP, DEFAULT_STRATEGY
 from demo_test_debug import generate_better_mock_data
@@ -21,6 +22,7 @@ except ImportError:
     GridTradingStrategy = None
     TurtleTradingStrategy = None
 from export_to_excel import export_detailed_trades_to_excel, export_batch_results_to_excel
+from backtest_history import save_record, get_records, delete_record as delete_history_record
 from backtest_engine_enhanced import EnhancedBacktestEngine, BacktestTimeConfig
 from data_manager import DataManager
 from data_fetcher import get_index_constituents
@@ -33,8 +35,73 @@ CORS(app)
 manager = DataManager()
 config_manager = ConfigManager()
 
+
+# ── 定时任务：每日收盘后自动更新所有已缓存股票 ──────────────────────────────
+def _auto_update_all_stocks():
+    """每日 17:30 自动增量更新所有已缓存的股票数据"""
+    try:
+        symbols = manager.get_all_cached_stocks()
+        if not symbols:
+            return
+        print(f"[定时任务 {datetime.now():%H:%M}] 开始自动更新 {len(symbols)} 只股票...")
+        ok, fail = 0, 0
+        for symbol in symbols:
+            try:
+                manager.update_single_stock(symbol)
+                ok += 1
+            except Exception as e:
+                print(f"[定时任务] 更新 {symbol} 失败: {e}")
+                fail += 1
+        print(f"[定时任务] 完成：{ok} 成功，{fail} 失败")
+    except Exception as e:
+        print(f"[定时任务] 运行出错: {e}")
+
+
+_scheduler = BackgroundScheduler(timezone='Asia/Shanghai')
+_scheduler.add_job(_auto_update_all_stocks, 'cron', hour=17, minute=30, id='daily_update')
+_scheduler.start()
+
 # 后台任务状态
 background_tasks = {}
+
+# ── 手动触发全量更新 ────────────────────────────────────────────────────────
+_update_all_task = {'status': 'idle', 'ok': 0, 'fail': 0, 'total': 0, 'done': 0}
+
+@app.route('/api/cache/update-all', methods=['POST'])
+def trigger_update_all():
+    """手动触发所有已缓存股票的增量更新（后台执行）"""
+    if _update_all_task.get('status') == 'running':
+        return jsonify({'success': False, 'error': '更新任务已在运行中，请稍后再试'})
+
+    symbols = manager.get_all_cached_stocks()
+    if not symbols:
+        return jsonify({'success': False, 'error': '缓存中没有任何股票数据'})
+
+    _update_all_task.update(status='running', ok=0, fail=0, total=len(symbols), done=0)
+
+    def _run():
+        for symbol in symbols:
+            try:
+                manager.update_single_stock(symbol)
+                _update_all_task['ok'] += 1
+            except Exception as e:
+                print(f"[手动更新] {symbol} 失败: {e}")
+                _update_all_task['fail'] += 1
+            _update_all_task['done'] += 1
+        _update_all_task['status'] = 'done'
+        print(f"[手动更新] 完成：{_update_all_task['ok']} 成功，{_update_all_task['fail']} 失败")
+
+    import threading
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True, 'total': len(symbols),
+                    'message': f'已开始后台更新 {len(symbols)} 只股票'})
+
+@app.route('/api/cache/update-all/status', methods=['GET'])
+def update_all_status():
+    """查询更新进度"""
+    t = _update_all_task
+    pct = round(t['done'] / t['total'] * 100, 1) if t['total'] else 0
+    return jsonify({**t, 'progress_pct': pct})
 
 @app.route('/')
 def index():
@@ -54,11 +121,17 @@ def parameters_visual_page():
 @app.route('/api/config', methods=['GET'])
 def get_config():
     """获取配置信息"""
+    from config import BACKTEST_START, BACKTEST_END, DATA_FETCH_START, DATA_FETCH_END, TURNOVER_RANK_TOP_N
     return jsonify({
         'start_date': START_DATE,
         'end_date': END_DATE,
         'strategy_params': STRATEGY_PARAMS,
         'max_stocks': MAX_STOCKS,
+        'backtest_start': BACKTEST_START,
+        'backtest_end': BACKTEST_END,
+        'data_fetch_start': DATA_FETCH_START,
+        'data_fetch_end': DATA_FETCH_END,
+        'turnover_rank_top_n': TURNOVER_RANK_TOP_N,
     })
 
 @app.route('/api/cache/status', methods=['GET'])
@@ -403,7 +476,11 @@ def run_backtest_with_cache():
             strategy_key = config_manager.get_current_strategy()
 
         if custom_params is None:
-            params = config_manager.get_strategy_params(strategy_key)
+            # 当前策略用用户保存的参数（含页面上的修改），其他策略用默认值
+            if strategy_key == config_manager.get_current_strategy():
+                params = config_manager.get_params()
+            else:
+                params = config_manager.get_strategy_params(strategy_key)
         else:
             params = custom_params
 
@@ -448,13 +525,20 @@ def run_backtest_with_cache():
         trading_settings = config_manager.get_trading_settings()
 
         # 运行回测 - 使用增强版引擎
-        from config import DATA_FETCH_START, DATA_FETCH_END, BACKTEST_START, BACKTEST_END, MAX_POSITION_RATIO
+        from config import DATA_FETCH_START, DATA_FETCH_END, BACKTEST_START, BACKTEST_END, MAX_POSITION_RATIO, TURNOVER_RANK_TOP_N
+
+        # 支持前端传入自定义回测起止日期，未传则使用 config.py 全局配置
+        backtest_start = data.get('backtest_start') or BACKTEST_START
+        backtest_end   = data.get('backtest_end')   or BACKTEST_END
+
+        # 成交额排名过滤参数（0 = 不过滤）
+        turnover_rank_top_n = int(data.get('turnover_rank_top_n') or TURNOVER_RANK_TOP_N)
 
         time_config = BacktestTimeConfig(
             data_start=DATA_FETCH_START,
             data_end=DATA_FETCH_END,
-            backtest_start=BACKTEST_START,
-            backtest_end=BACKTEST_END
+            backtest_start=backtest_start,
+            backtest_end=backtest_end
         )
 
         engine = EnhancedBacktestEngine(
@@ -463,7 +547,8 @@ def run_backtest_with_cache():
             commission_rate=trading_settings['commission_rate'],
             slippage=trading_settings['slippage'],
             time_config=time_config,
-            max_position_ratio=MAX_POSITION_RATIO
+            max_position_ratio=MAX_POSITION_RATIO,
+            turnover_rank_top_n=turnover_rank_top_n,
         )
         results = engine.run_multiple_stocks_with_portfolio(all_data, strategy)
 
@@ -476,7 +561,6 @@ def run_backtest_with_cache():
         # 从 trade_history 中提取每笔卖出交易的收益
         all_trades = []
         wins = 0
-        prev_sell_cash = initial_capital
 
         for i, trade_record in enumerate(trade_history):
             if trade_record.get('action') == 'SELL':
@@ -498,9 +582,11 @@ def run_backtest_with_cache():
                             matching_trade = st
                             break
 
-                    # 计算这笔交易的收益贡献（相对于初始资金）
-                    cash_after_sell = sell_trade.get('cash_after', 0)
-                    trade_contribution = (cash_after_sell - prev_sell_cash) / initial_capital * 100
+                    # 优先用策略自带的收益率（直接基于买卖价，准确）
+                    if matching_trade and '收益率%' in matching_trade:
+                        trade_return = matching_trade['收益率%']
+                    else:
+                        trade_return = sell_trade.get('profit_pct', 0)
 
                     all_trades.append({
                         'symbol': trade_record.get('symbol'),
@@ -508,26 +594,37 @@ def run_backtest_with_cache():
                         'buy_price': round(buy_trade['price'], 2),
                         'sell_date': str(sell_trade['date']).split()[0],
                         'sell_price': round(sell_trade['price'], 2),
-                        'return': round(trade_contribution, 4),  # 这笔交易的收益贡献
-                        'status': matching_trade.get('状态', '平仓') if matching_trade else '平仓'
+                        'return': round(trade_return, 4),
+                        'status': matching_trade.get('状态', '平仓') if matching_trade else '平仓',
+                        'open_positions': sell_trade.get('open_positions', 0),
+                        'position_ratio': round(sell_trade.get('position_ratio', 0) * 100, 1),
                     })
 
-                    if trade_contribution > 0:
+                    if trade_return > 0:
                         wins += 1
 
-                    prev_sell_cash = cash_after_sell
+        # ── 统计数据：使用策略原始输出，与 Excel 导出口径一致 ──────────────
+        # total_trades_count = 策略产生的所有信号数（含未平仓），与 Excel 行数一致
+        total_trades_count = sum(sr.get('num_trades', 0) for sr in stock_results.values())
 
-        # 计算统计数据
-        total_trades_count = len(all_trades)
+        # 总收益率：使用 PortfolioManager 按市值计算的真实组合收益
+        # （已平仓 P&L 体现在现金；未平仓持仓按末日收盘价市值计）
         total_return_pct = portfolio_summary.get('total_return_pct', 0)
 
-        # 平均收益率 = 总收益率 ÷ 交易笔数 (保持一致性)
-        avg_return = total_return_pct / total_trades_count if total_trades_count > 0 else 0
-
-        # 胜率 = 盈利交易数 ÷ 总交易数
+        # 胜率 & 平均收益：基于策略原始信号（与 Excel 口径一致）
+        all_strategy_trades = [
+            trade
+            for sr in stock_results.values()
+            for trade in sr.get('trades', [])
+        ]
+        wins = sum(1 for t in all_strategy_trades if t.get('收益率%', 0) > 0)
         win_rate = (wins / total_trades_count * 100) if total_trades_count > 0 else 0
+        avg_return = (
+            sum(t.get('收益率%', 0) for t in all_strategy_trades) / total_trades_count
+            if total_trades_count > 0 else 0
+        )
 
-        return jsonify({
+        response_data = {
             'success': True,
             'strategy': strategy_key,
             'strategy_name': STRATEGY_MAP[strategy_key]['name'],
@@ -535,12 +632,36 @@ def run_backtest_with_cache():
             'portfolio_summary': portfolio_summary,
             'total_trades': total_trades_count,
             'total_return': round(total_return_pct, 2),
-            'avg_return': round(avg_return, 4),  # 保留4位小数，因为平均值很小
+            'avg_return': round(avg_return, 4),
             'win_rate': round(win_rate, 1),
             'final_capital': round(portfolio_summary.get('final_total_value', 0), 2),
             'rejected_trades': portfolio_summary.get('num_trades_rejected', 0),
-            'trades': all_trades[:20]  # 返回前20笔
-        })
+            'trades': all_trades[:20]
+        }
+
+        # ── 自动保存历史记录 ───────────────────────────────────────────────────
+        try:
+            save_record({
+                'id': datetime.now().strftime('%Y%m%d_%H%M%S'),
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'strategy_key': strategy_key,
+                'strategy_name': STRATEGY_MAP[strategy_key]['name'],
+                'stocks_count': len(all_data),
+                'backtest_start': backtest_start,
+                'backtest_end': backtest_end,
+                'turnover_rank_top_n': turnover_rank_top_n,
+                'total_trades': total_trades_count,
+                'total_return': round(total_return_pct, 2),
+                'win_rate': round(win_rate, 1),
+                'avg_return': round(avg_return, 4),
+                'initial_capital': portfolio_summary.get('initial_capital', 0),
+                'final_capital': round(portfolio_summary.get('final_total_value', 0), 2),
+                'rejected_trades': portfolio_summary.get('num_trades_rejected', 0),
+            })
+        except Exception:
+            pass  # 保存失败不影响主流程
+
+        return jsonify(response_data)
 
     except Exception as e:
         import traceback
@@ -563,6 +684,176 @@ def clear_cache():
 
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
+
+@app.route('/api/history', methods=['GET'])
+def get_history():
+    """获取历史回测记录"""
+    return jsonify({'success': True, 'records': get_records()})
+
+
+@app.route('/api/history/<record_id>', methods=['DELETE'])
+def delete_history(record_id):
+    """删除一条历史回测记录"""
+    ok = delete_history_record(record_id)
+    return jsonify({'success': ok})
+
+
+@app.route('/api/signals/scan', methods=['POST'])
+def scan_signals():
+    """扫描所有缓存股票，找出在指定日期范围内有 Buy_Signal=True 的股票"""
+    try:
+        data = request.json or {}
+
+        # 1. 解析日期范围，默认当天
+        today = datetime.now().strftime('%Y-%m-%d')
+        start_date = data.get('start_date') or today
+        end_date   = data.get('end_date')   or today
+
+        # 2. 确定策略 key 和参数
+        strategy_key = data.get('strategy_key') or config_manager.get_current_strategy()
+        custom_params = data.get('params')
+        if custom_params:
+            params = custom_params
+        elif strategy_key == config_manager.get_current_strategy():
+            params = config_manager.get_params()
+        else:
+            params = config_manager.get_strategy_params(strategy_key)
+
+        # 3. 实例化策略
+        strategy_classes = {
+            'VolumeBreakoutStrategy': VolumeBreakoutStrategy,
+            'SteadyTrendStrategy': SteadyTrendStrategy,
+            'AggressiveMomentumStrategy': AggressiveMomentumStrategy,
+            'BalancedMultiFactorStrategy': BalancedMultiFactorStrategy,
+        }
+        if NEW_STRATEGIES_AVAILABLE:
+            strategy_classes['DoubleMACrossStrategy'] = DoubleMACrossStrategy
+            strategy_classes['GridTradingStrategy'] = GridTradingStrategy
+            strategy_classes['TurtleTradingStrategy'] = TurtleTradingStrategy
+
+        class_name = STRATEGY_MAP[strategy_key]['class_name']
+        strategy = strategy_classes[class_name](params)
+        strategy_name = STRATEGY_MAP[strategy_key].get('name', strategy_key)
+
+        # 4. 扫描所有股票，收集 (date, symbol, ...) 结果
+        symbols = manager.get_all_cached_stocks()
+        total_scanned = 0
+        all_hits = []   # 每条代表一个 (stock, signal_date)
+
+        for symbol in symbols:
+            try:
+                df = manager.get_data_from_cache(symbol)
+                if df is None or df.empty:
+                    continue
+                total_scanned += 1
+
+                try:
+                    signals = strategy.calculate_signals(df)
+                except Exception:
+                    continue
+
+                if signals is None or signals.empty or 'Buy_Signal' not in signals.columns:
+                    continue
+
+                date_col = pd.to_datetime(signals['日期'], errors='coerce').dt.strftime('%Y-%m-%d')
+                mask = (
+                    (date_col >= start_date) &
+                    (date_col <= end_date) &
+                    (signals['Buy_Signal'] == True)
+                )
+                matched_rows = signals[mask]
+
+                for _, row in matched_rows.iterrows():
+                    signal_date = pd.to_datetime(row['日期']).strftime('%Y-%m-%d')
+                    ma5  = round(float(row['MA5']),  2) if 'MA5'  in signals.columns and pd.notna(row.get('MA5'))  else None
+                    ma30 = round(float(row['MA30']), 2) if 'MA30' in signals.columns and pd.notna(row.get('MA30')) else None
+                    all_hits.append({
+                        'date':         signal_date,
+                        'symbol':       symbol,
+                        'close':        round(float(row['收盘']),           2) if pd.notna(row.get('收盘'))    else None,
+                        'change_pct':   round(float(row['涨跌幅']),         2) if pd.notna(row.get('涨跌幅'))  else None,
+                        'ma5':          ma5,
+                        'ma30':         ma30,
+                        'volume':       int(row['成交量'])                     if pd.notna(row.get('成交量'))  else None,
+                        'turnover_yi':  round(float(row['成交额']) / 1e8,   2) if pd.notna(row.get('成交额'))  else None,
+                    })
+
+            except Exception:
+                continue
+
+        # 按日期降序排列，最多返回 10 条
+        all_hits.sort(key=lambda x: x['date'], reverse=True)
+        stocks = all_hits[:10]
+
+        return jsonify({
+            'success':      True,
+            'start_date':   start_date,
+            'end_date':     end_date,
+            'strategy_name': strategy_name,
+            'total_scanned': total_scanned,
+            'matched':      len(all_hits),
+            'stocks':       stocks,
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
+@app.route('/api/signals/kline/<symbol>', methods=['GET'])
+def get_signal_kline(symbol):
+    """获取某只股票在指定日期前后的K线数据（用于弹窗图表）"""
+    try:
+        date_str = request.args.get('date')
+        if not date_str:
+            return jsonify({'success': False, 'error': '缺少 date 参数'}), 400
+        days = int(request.args.get('days', 10))
+
+        df = manager.get_data_from_cache(symbol)
+        if df is None or df.empty:
+            return jsonify({'success': False, 'error': f'未找到股票 {symbol} 的缓存数据'}), 400
+
+        # 过滤无效日期行
+        df = df[pd.to_datetime(df['日期'], errors='coerce').notna()].copy()
+        df['_date_dt'] = pd.to_datetime(df['日期'], errors='coerce')
+        df = df.reset_index(drop=True)
+
+        target_dt = pd.to_datetime(date_str)
+
+        # 找最近的行索引
+        diffs = (df['_date_dt'] - target_dt).abs()
+        idx = int(diffs.argmin())
+
+        # 实际对应的信号日期
+        signal_date_actual = df.iloc[idx]['_date_dt'].strftime('%Y-%m-%d')
+
+        # 取前后 days 行，边界 clamp
+        start_idx = max(0, idx - days)
+        end_idx = min(len(df), idx + days + 1)
+        subset = df.iloc[start_idx:end_idx]
+
+        kline = []
+        for _, row in subset.iterrows():
+            row_date = row['_date_dt'].strftime('%Y-%m-%d')
+            kline.append({
+                'date': row_date,
+                'open': round(float(row['开盘']), 2) if pd.notna(row.get('开盘')) else None,
+                'close': round(float(row['收盘']), 2) if pd.notna(row.get('收盘')) else None,
+                'high': round(float(row['高']), 2) if pd.notna(row.get('高')) else None,
+                'low': round(float(row['低']), 2) if pd.notna(row.get('低')) else None,
+                'volume': int(row['成交量']) if pd.notna(row.get('成交量')) else None,
+                'is_signal': row_date == signal_date_actual,
+            })
+
+        return jsonify({
+            'success': True,
+            'symbol': symbol,
+            'signal_date': signal_date_actual,
+            'kline': kline,
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
 
 @app.route('/api/parameters', methods=['GET'])
 def get_parameters():
@@ -727,7 +1018,11 @@ def export_trades_to_excel():
             strategy_key = config_manager.get_current_strategy()
 
         if custom_params is None:
-            params = config_manager.get_strategy_params(strategy_key)
+            # 当前策略用用户保存的参数（含页面上的修改），其他策略用默认值
+            if strategy_key == config_manager.get_current_strategy():
+                params = config_manager.get_params()
+            else:
+                params = config_manager.get_strategy_params(strategy_key)
         else:
             params = custom_params
 
@@ -774,13 +1069,20 @@ def export_trades_to_excel():
         trading_settings = config_manager.get_trading_settings()
 
         # 运行回测 - 使用增强版引擎
-        from config import DATA_FETCH_START, DATA_FETCH_END, BACKTEST_START, BACKTEST_END, MAX_POSITION_RATIO
+        from config import DATA_FETCH_START, DATA_FETCH_END, BACKTEST_START, BACKTEST_END, MAX_POSITION_RATIO, TURNOVER_RANK_TOP_N
+
+        # 支持前端传入自定义回测起止日期，未传则使用 config.py 全局配置
+        backtest_start = data.get('backtest_start') or BACKTEST_START
+        backtest_end   = data.get('backtest_end')   or BACKTEST_END
+
+        # 成交额排名过滤参数（0 = 不过滤）
+        turnover_rank_top_n = int(data.get('turnover_rank_top_n') or TURNOVER_RANK_TOP_N)
 
         time_config = BacktestTimeConfig(
             data_start=DATA_FETCH_START,
             data_end=DATA_FETCH_END,
-            backtest_start=BACKTEST_START,
-            backtest_end=BACKTEST_END
+            backtest_start=backtest_start,
+            backtest_end=backtest_end
         )
 
         engine = EnhancedBacktestEngine(
@@ -789,7 +1091,8 @@ def export_trades_to_excel():
             commission_rate=trading_settings['commission_rate'],
             slippage=trading_settings['slippage'],
             time_config=time_config,
-            max_position_ratio=MAX_POSITION_RATIO
+            max_position_ratio=MAX_POSITION_RATIO,
+            turnover_rank_top_n=turnover_rank_top_n,
         )
         results = engine.run_multiple_stocks_with_portfolio(all_data, strategy)
 
@@ -798,8 +1101,38 @@ def export_trades_to_excel():
         filename = f'回测交易明细_{timestamp}.xlsx'
         filepath = os.path.join(os.getcwd(), filename)
 
-        # 使用现有的导出函数
-        export_batch_results_to_excel(results, output_file=filepath)
+        # 将 stock_results 转换为 export_batch_results_to_excel 所需格式
+        # {symbol: {trades, num_trades, trades_df, total_return, avg_return}}
+        stock_results = results.get('stock_results', {})
+        export_data = {}
+        for symbol, sr in stock_results.items():
+            trades = sr.get('trades', [])  # 使用策略原始信号，与 UI 显示口径一致
+            if not trades:
+                export_data[symbol] = {
+                    'trades': [], 'num_trades': 0,
+                    'trades_df': pd.DataFrame(),
+                    'total_return': 0, 'avg_return': 0,
+                }
+                continue
+            trades_df = pd.DataFrame(trades)
+            total_ret = trades_df['收益率%'].sum() if '收益率%' in trades_df.columns else 0
+            avg_ret = trades_df['收益率%'].mean() if '收益率%' in trades_df.columns else 0
+            export_data[symbol] = {
+                'trades': trades,
+                'num_trades': len(trades),
+                'trades_df': trades_df,
+                'total_return': round(total_ret, 2),
+                'avg_return': round(avg_ret, 2),
+            }
+
+        export_batch_results_to_excel(
+            export_data,
+            output_file=filepath,
+            trade_history=results.get('trade_history', []),
+            all_data=all_data,
+            backtest_start=backtest_start,
+            backtest_end=backtest_end,
+        )
 
         # 发送文件
         return send_file(

@@ -27,6 +27,9 @@ DOUBLE_MA_PARAMS = {
     "use_take_profit": True,    # 是否使用止盈
     "take_profit": 0.15,        # 固定止盈幅度（15%）
     "trailing_stop": 0.05,      # 移动止盈幅度（5%，从最高点回落触发）
+
+    # 超期强制卖出
+    "max_hold_days": 20,        # 最大持仓交易日数（0 = 不限制）；持满后下一交易日强制卖出
 }
 
 # 双均线策略变体1：激进型（适合成长股）
@@ -41,6 +44,7 @@ DOUBLE_MA_AGGRESSIVE_PARAMS = {
     "use_take_profit": True,
     "take_profit": 0.10,        # 更快止盈
     "trailing_stop": 0.03,
+    "max_hold_days": 10,        # 激进型持仓上限更短
 }
 
 # 双均线策略变体2：稳健型（适合大盘股）
@@ -55,6 +59,7 @@ DOUBLE_MA_STEADY_PARAMS = {
     "use_take_profit": True,
     "take_profit": 0.20,        # 更高的止盈目标
     "trailing_stop": 0.08,
+    "max_hold_days": 30,        # 稳健型持仓上限更长
 }
 
 
@@ -83,6 +88,9 @@ GRID_TRADING_PARAMS = {
 
     # 网格重置
     "rebalance_days": 20,       # 网格重置周期（天）
+
+    # 止损
+    "stop_loss": 0.10,          # 单笔止损幅度（10%），超过此亏损立即平仓
 }
 
 # 网格策略变体1：密集网格（适合低波动标的）
@@ -96,6 +104,7 @@ GRID_TRADING_DENSE_PARAMS = {
     "atr_period": 14,
     "atr_multiplier": 1.5,
     "rebalance_days": 15,
+    "stop_loss": 0.10,          # 单笔止损幅度（10%）
 }
 
 # 网格策略变体2：宽松网格（适合高波动标的）
@@ -109,6 +118,7 @@ GRID_TRADING_WIDE_PARAMS = {
     "atr_period": 14,
     "atr_multiplier": 2.5,
     "rebalance_days": 30,
+    "stop_loss": 0.15,          # 宽松版止损更宽（15%），适配高波动标的
 }
 
 

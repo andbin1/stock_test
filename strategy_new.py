@@ -80,6 +80,9 @@ class DoubleMACrossStrategy:
         self.take_profit = params.get('take_profit', 0.15)
         self.trailing_stop = params.get('trailing_stop', 0.05)
 
+        # 超期强制卖出（0 = 不限制）
+        self.max_hold_days = params.get('max_hold_days', 0)
+
     def calculate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """计算交易信号"""
         df = df.copy()
@@ -133,11 +136,14 @@ class DoubleMACrossStrategy:
                     'buy_date': row['日期'],
                     'buy_price': row['收盘'],
                     'highest_price': row['收盘'],
+                    'hold_bars': 0,          # 已持有交易日数
+                    'force_exit_next': False, # 下一交易日强制卖出标记
                 }
                 continue
 
             # 持仓期间
             if position is not None:
+                position['hold_bars'] += 1
                 position['highest_price'] = max(position['highest_price'], row['收盘'])
 
                 current_price = row['收盘']
@@ -146,8 +152,12 @@ class DoubleMACrossStrategy:
 
                 sell_reason = None
 
+                # 超期强制卖出（最高优先级，上一交易日已达上限）
+                if position['force_exit_next']:
+                    sell_reason = '超期卖出'
+
                 # 止损
-                if self.use_stop_loss and profit_pct <= -self.stop_loss:
+                elif self.use_stop_loss and profit_pct <= -self.stop_loss:
                     sell_reason = '止损'
 
                 # 固定止盈
@@ -161,6 +171,10 @@ class DoubleMACrossStrategy:
                 # 死叉卖出
                 elif row['Sell_Signal']:
                     sell_reason = '死叉'
+
+                # 尚未卖出时：检查是否到达最大持仓天数，标记下一交易日强制卖出
+                if sell_reason is None and self.max_hold_days > 0 and position['hold_bars'] >= self.max_hold_days:
+                    position['force_exit_next'] = True
 
                 # 执行卖出
                 if sell_reason:
@@ -275,6 +289,9 @@ class GridTradingStrategy:
         # 网格重置
         self.rebalance_days = params.get('rebalance_days', 20)
 
+        # 止损
+        self.stop_loss = params.get('stop_loss', 0.10)  # 单笔止损幅度，默认10%
+
     def calculate_grid_levels(self, df: pd.DataFrame, current_idx: int) -> dict:
         """计算网格线"""
         if self.use_atr and 'ATR_14' in df.columns:
@@ -303,6 +320,32 @@ class GridTradingStrategy:
             'sell_levels': sell_levels,
             'grid_size': grid_size,
         }
+
+    def calculate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """计算网格买入信号（用于信号预览）
+
+        标记价格触及或低于滚动均价下方第一档网格买入线的行。
+        """
+        df = df.copy()
+
+        if self.use_atr:
+            df['ATR_14'] = calculate_atr(df, self.atr_period)
+            # ATR网格：基准线为收盘价，格间距 = ATR * multiplier
+            df['Grid_Size'] = df['ATR_14'].ffill().fillna(0) * self.atr_multiplier
+        else:
+            # 固定百分比网格：滚动均价为基准
+            df['Grid_Base'] = df['收盘'].rolling(window=self.rebalance_days, min_periods=1).mean()
+            df['Grid_Size'] = df['Grid_Base'] * self.price_range / self.grid_levels
+
+        # 前一个重置周期末的收盘价作为网格基准价（向前偏移 rebalance_days）
+        df['Grid_Ref_Price'] = df['收盘'].shift(self.rebalance_days).fillna(df['收盘'])
+        # 第一档买入线 = 基准价 - 1 * grid_size
+        df['Grid_Buy_Level_1'] = df['Grid_Ref_Price'] - df['Grid_Size']
+
+        # 买入信号：当前收盘价 <= 第一档买入线
+        df['Buy_Signal'] = df['收盘'] <= df['Grid_Buy_Level_1']
+
+        return df
 
     def get_trades(self, df: pd.DataFrame) -> list:
         """提取交易记录"""
@@ -338,7 +381,7 @@ class GridTradingStrategy:
                         })
                         break
 
-            # 检查卖出信号（价格触及卖出线或达到目标收益）
+            # 检查卖出信号（达到目标收益 或 触发止损）
             positions_to_remove = []
             for pos_idx, pos in enumerate(positions):
                 profit_pct = (current_price - pos['buy_price']) / pos['buy_price']
@@ -356,6 +399,23 @@ class GridTradingStrategy:
                         '持有天数': hold_days,
                         '收益率%': profit,
                         '状态': '网格止盈',
+                    })
+
+                    positions_to_remove.append(pos_idx)
+
+                # 触发止损
+                elif -profit_pct >= self.stop_loss:
+                    hold_days = (row['日期'] - pos['buy_date']).days
+                    profit = profit_pct * 100 - 0.1
+
+                    trades.append({
+                        '买入日期': pos['buy_date'],
+                        '买入价': pos['buy_price'],
+                        '卖出日期': row['日期'],
+                        '卖出价': current_price,
+                        '持有天数': hold_days,
+                        '收益率%': profit,
+                        '状态': '止损',
                     })
 
                     positions_to_remove.append(pos_idx)
@@ -482,6 +542,7 @@ class TurtleTradingStrategy:
 
         # 入场信号：突破N日最高
         df['Entry_Signal'] = (df['收盘'] > df['High_N'].shift(1)) & df['Trend_Up']
+        df['Buy_Signal'] = df['Entry_Signal']  # 统一接口别名
 
         # 出场信号：跌破M日最低
         df['Exit_Signal'] = df['收盘'] < df['Low_N'].shift(1)

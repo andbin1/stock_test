@@ -29,57 +29,94 @@ def generate_stock_codes(prefix: str, start: int, end: int) -> list:
     return stocks
 
 
+def _get_all_a_stocks_from_api() -> list:
+    """通过 efinance 实时行情接口获取全量在市A股代码（沪A + 深A + 北交所）
+
+    返回真实在市股票列表，替代按号段枚举的方式。
+    失败时返回空列表，由调用方降级处理。
+    """
+    if not HAS_EFINANCE:
+        return []
+    try:
+        df = ef.stock.get_realtime_quotes()
+        if df is None or df.empty:
+            return []
+        # 只保留普通A股（沪A / 深A / 北A），过滤掉B股、基金、债券等
+        if '市场类型' in df.columns:
+            df = df[df['市场类型'].isin(['沪A', '深A', '北A'])]
+        codes = df['股票代码'].astype(str).str.zfill(6).tolist()
+        return codes
+    except Exception as e:
+        print(f"  [警告] 实时行情接口获取股票列表失败: {e}")
+        return []
+
+
 def get_index_constituents(index_code: str, limit: int = None) -> list:
-    """获取指数成分股列表 - 动态生成完整市场数据"""
+    """获取指数成分股列表"""
     print(f"获取指数 {index_code} 的成分股...")
 
-    # 根据股票代码规律生成完整列表
-    if index_code == "000001":  # 沪深A股 - 包含所有可交易的A股
-        # 深圳主板：000001-002999
-        sz_main = generate_stock_codes("000", 1, 999)  # 000001-000999（主板+中小板）
-        sz_cyb = generate_stock_codes("300", 1, 999)   # 300001-300999（创业板）
-
-        # 上海主板：600000-609999
-        sh_main = generate_stock_codes("600", 0, 999)  # 600000-600999
-
-        # 合并所有股票
-        a_stocks = sz_main + sz_cyb + sh_main
+    if index_code == "000001":  # 沪深京A股全量 - 优先用API真实列表
+        a_stocks = _get_all_a_stocks_from_api()
+        if not a_stocks:
+            # API 不可用时降级：按已知号段枚举（覆盖主要板块）
+            print("  [降级] 使用号段枚举方式获取股票列表")
+            a_stocks = (
+                generate_stock_codes("000", 1, 999)   # 深圳主板
+                + generate_stock_codes("001", 0, 999) # 深圳主板延续
+                + generate_stock_codes("002", 0, 999) # 中小板
+                + generate_stock_codes("003", 0, 999) # 深圳主板新股
+                + generate_stock_codes("300", 0, 999) # 创业板
+                + generate_stock_codes("301", 0, 999) # 创业板新股
+                + generate_stock_codes("600", 0, 999) # 上海主板
+                + generate_stock_codes("601", 0, 999) # 上海主板
+                + generate_stock_codes("603", 0, 999) # 上海主板
+                + generate_stock_codes("605", 0, 999) # 上海主板新股
+                + generate_stock_codes("688", 0, 999) # 科创板
+                + generate_stock_codes("689", 0, 999) # 科创板延续
+            )
 
     elif index_code == "399006":  # 创业板
-        # 创业板：300001-300999
-        cy_stocks = generate_stock_codes("300", 1, 999)
-        a_stocks = cy_stocks
+        a_stocks = _get_all_a_stocks_from_api()
+        if a_stocks:
+            a_stocks = [s for s in a_stocks if s.startswith(('300', '301'))]
+        else:
+            a_stocks = (generate_stock_codes("300", 0, 999)
+                        + generate_stock_codes("301", 0, 999))
 
     elif index_code == "000688":  # 科创板
-        # 科创板：688001-688999（注意：688000 不存在，从 688001 开始）
-        kc_stocks = generate_stock_codes("688", 1, 999)
-        a_stocks = kc_stocks
+        a_stocks = _get_all_a_stocks_from_api()
+        if a_stocks:
+            a_stocks = [s for s in a_stocks if s.startswith(('688', '689'))]
+        else:
+            a_stocks = (generate_stock_codes("688", 1, 999)
+                        + generate_stock_codes("689", 0, 999))
 
-    elif index_code == "399001":  # 深成指
-        # 深圳所有股票
-        sz_main = generate_stock_codes("000", 1, 999)
-        sz_cyb = generate_stock_codes("300", 1, 999)
-        a_stocks = sz_main + sz_cyb
+    elif index_code == "399001":  # 深市全部
+        a_stocks = _get_all_a_stocks_from_api()
+        if a_stocks:
+            a_stocks = [s for s in a_stocks if s.startswith(('000', '001', '002', '003', '300', '301'))]
+        else:
+            a_stocks = (generate_stock_codes("000", 1, 999)
+                        + generate_stock_codes("002", 0, 999)
+                        + generate_stock_codes("300", 0, 999))
 
-    elif index_code == "000905":  # 中证500 - 中等规模股票
-        # 生成中证500范围的股票代码
-        sz_stocks = generate_stock_codes("000", 500, 999)  # 较大的深圳股票
-        sh_stocks = generate_stock_codes("600", 500, 799)  # 较大的上海股票
-        a_stocks = sz_stocks + sh_stocks
+    elif index_code == "000905":  # 中证500 - 用全量后过滤中等市值
+        a_stocks = _get_all_a_stocks_from_api()
+        if not a_stocks:
+            a_stocks = (generate_stock_codes("000", 500, 999)
+                        + generate_stock_codes("600", 500, 799))
 
     elif index_code == "000300":  # 沪深300（兼容旧代码）
-        # 大盘股票
-        sz_large = generate_stock_codes("000", 1, 200)
-        sh_large = generate_stock_codes("600", 0, 300)
-        a_stocks = sz_large + sh_large
+        a_stocks = _get_all_a_stocks_from_api()
+        if not a_stocks:
+            a_stocks = (generate_stock_codes("000", 1, 200)
+                        + generate_stock_codes("600", 0, 300))
+
     else:
         print(f"不支持的指数代码: {index_code}")
-        # 如果是不支持的指数，返回原始的硬编码列表
-        a_stocks = [
-            "000001", "000002", "000024", "000027", "000050", "600000", "600016"
-        ]
+        a_stocks = ["000001", "000002", "600000", "600016"]
 
-    # 去除重复数据
+    # 去重
     a_stocks = list(dict.fromkeys(a_stocks))
 
     if limit:
