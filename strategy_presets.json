@@ -2,5 +2,34 @@
   "测试预设": {
     "ma_period": 20,
     "volume_multiplier": 1.5
+  },
+  "新的预设": {
+    "ma_short": 30,
+    "ma_long": 60,
+    "ma_filter": 120,
+    "volume_ma": 20,
+    "volume_multiplier": 1.5,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "stop_loss": 0.08,
+    "take_profit": 0.15,
+    "trailing_stop": 0.05,
+    "position_size": 0.2
+  },
+  "预设2": {
+    "ma_short": 59,
+    "ma_long": 162,
+    "ma_filter": 120,
+    "volume_ma": 20,
+    "volume_multiplier": 1.5,
+    "macd_fast": 15,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "stop_loss": 0.08,
+    "take_profit": 0.15,
+    "trailing_stop": 0.05,
+    "position_size": 0.2,
+    "ma_period": 72
   }
 }
